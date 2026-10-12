@@ -19,7 +19,7 @@
 // RUNS IN-PROCESS. No network, no live relay, no debris in the real commons.
 
 import { identityFromSeed } from '../src/identity.mjs';
-import { createMessage, stampPow, messageId, DEFAULT_POW_BITS } from '../src/message.mjs';
+import { createMessage, stampPow, messageId, powOK, DEFAULT_POW_BITS } from '../src/message.mjs';
 import worker from '../worker/worker.js';
 
 let pass = 0;
@@ -80,8 +80,17 @@ const strangerId = stranger.agentId ?? stranger.publicKey;
 // "accepts unadmitted keys" would be indistinguishable from "has no checks at all".
 {
   const kv = makeKV();
-  const unstamped = createMessage(stranger, { type: 'announce', topic: 't', body: { x: 1 }, refs: [] },
-    { seq: 1, ts: Date.now(), bits: 2 });   // far below the requirement
+  // "Far below the requirement" has to be a MEASUREMENT, not an intention. A stamp searched at 2 bits
+  // can satisfy the relay's 12 by luck (p = 2^-10), and that is not hypothetical: on 2026-10-12 one
+  // chain run reported 201 here -- "expected 429, got 201" -- while 40 standalone runs passed. The
+  // stamp is therefore re-nonced until the library's own check says it is genuinely below the bar, and
+  // that fact is asserted BEFORE posting. A 201 below the bar then means the relay stopped checking;
+  // it can no longer mean luck.
+  let unstamped = createMessage(stranger, { type: 'announce', topic: 't', body: { x: 1 }, refs: [] },
+    { seq: 1, ts: Date.now(), bits: 2 });
+  for (let k = 0; k < 32 && powOK(unstamped, DEFAULT_POW_BITS); k += 1) unstamped = { ...unstamped, pow: String(k) };
+  check('CONTROL: the stamp really is below the 12-bit bar (else this control tests nothing)',
+    powOK(unstamped, DEFAULT_POW_BITS) === false, `pow=${unstamped.pow}`);
   const badPow = await post(unstamped, kv);
   check('CONTROL: insufficient proof-of-work is still refused', badPow.status === 429,
     `expected 429, got ${badPow.status}`);
@@ -89,6 +98,11 @@ const strangerId = stranger.agentId ?? stranger.publicKey;
   const kv2 = makeKV();
   const good = mk(stranger, 2, { unadmitted: true });
   const edited = { ...good, body: { ...good.body, unadmitted: 'edited after signing' } };
+  // The same luck applies to a STALE stamp: editing the body re-rolls the hash against a nonce found
+  // for the old body, so pin it below the bar too (p = 2^-12 here, 4x rarer and still not zero).
+  for (let k = 0; k < 32 && powOK(edited, DEFAULT_POW_BITS); k += 1) edited.pow = String(k);
+  check('CONTROL: the stale stamp really is below the 12-bit bar', powOK(edited, DEFAULT_POW_BITS) === false,
+    `pow=${edited.pow}`);
   // MEASURED ORDER: the relay checks proof-of-work BEFORE the signature, so editing a signed body
   // trips the now-stale PoW and never reaches the signature check. Asserting "bad_sig" on an
   // unstamped edit would be asserting the wrong reason for a correct refusal.

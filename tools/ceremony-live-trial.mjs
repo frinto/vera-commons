@@ -109,7 +109,7 @@ console.log(`identity: ${IDENTITY_DIR}`);
 console.log(`before  : ${before.records} record(s), ${before.permits} permit(s), sha ${before.store.slice(0, 16)}`);
 console.log('');
 
-let console = null;
+let live = null;
 let exitCode = 0;
 try {
   const identity = generateIdentity();
@@ -127,9 +127,9 @@ try {
   // serving (naming the holder), and it can prove the port is free after the stop. On 2026-10-12 a
   // console started from a stray copy of this project held 127.0.0.1:7788 for 7h19m; any later run
   // that raced it would have reported a stranger's build as its own.
-  console = await startConsole({ app: APP, port: PORT, args: ['--no-browser'], tool: 'ceremony-live-trial.mjs' });
-  const TOKEN = console.token;
-  const BASE = console.base;
+  live = await startConsole({ app: APP, port: PORT, args: ['--no-browser'], tool: 'ceremony-live-trial.mjs' });
+  const TOKEN = live.token;
+  const BASE = live.base;
   const call = async (path, init) => {
     const sep = path.includes('?') ? '&' : '?';
     const res = await fetch(`${BASE}${path}${sep}t=${TOKEN}`, {
@@ -163,9 +163,9 @@ try {
   const rec = (listed.body?.admissions ?? []).find((r) => r.id === id);
   check('the record reached state "answered" — the ceremony tool\'s precondition', rec?.status === 'answered', `status=${rec?.status}`);
 
-  await stopAndVerify(console);
+  await stopAndVerify(live);
   check('no console is left listening on the trial port after phase A', (await probePort(PORT)) === false);
-  console = null;
+  live = null;
 
   if (DRY) {
     console.log('');
@@ -219,7 +219,7 @@ try {
   fail++;
   console.log('FAIL ' + err.message);
 } finally {
-  if (console) { try { await stopAndVerify(console); } catch { /* the checks above report it */ } }
+  if (live) { try { await stopAndVerify(live); } catch { /* the checks above report it */ } }
   rmSync(STATEMENT_FILE, { force: true });
 }
 

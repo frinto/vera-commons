@@ -127,11 +127,11 @@ console.log('');
 // already listening (naming the holder), and proves the port was released afterwards. A stale console
 // from a stray copy of this project sat on one of these ports for 7h19m on 2026-10-12; a run that raced
 // it would have reported a stranger's build as its own.
-const console = await startConsole({ app: APP, port: PORT, args: ['--no-browser'], tool: 'admission-ceremony.mjs' });
+const live = await startConsole({ app: APP, port: PORT, args: ['--no-browser'], tool: 'admission-ceremony.mjs' });
 
 let exitCode = 0;
 try {
-  const TOKEN = console.token;
+  const TOKEN = live.token;
   const BASE = `http://127.0.0.1:${PORT}`;
   // The per-run token travels as `?t=` — it is a CSRF guard against other local processes and
   // stray pages, not an API credential. The admission routes the JOINING AGENT uses
@@ -265,7 +265,7 @@ try {
   failures++;
   console.log(`  FAIL ${err.message}`);
 } finally {
-  await stopConsole(console);   // kill, wait for the exit, clear the lock
+  await stopConsole(live);   // kill, wait for the exit, clear the lock
   if (await probePort(PORT)) {  // and prove it: a leaked listener is a failed check, not a mystery
     failures++;
     console.log(`  FAIL a console is STILL listening on port ${PORT} after the run`);

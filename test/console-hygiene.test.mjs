@@ -187,6 +187,27 @@ setInterval(() => {}, 1000);
   check('the census found consoles to audit', detected.length >= 8, `${detected.length}: ${detected.join(', ')}`);
 }
 
+// --- 7. no file may shadow the global console object ---------------------------------------------
+{
+  // Measured 2026-10-12: renaming a console handle to \`console\` shadowed the global object, so every
+  // console.log ABOVE the declaration threw "Cannot access 'console' before initialization" at MODULE
+  // LOAD -- in the two tools this chain cannot execute, because they need the stick and they write. A
+  // static name rule is the only cheap guard this suite can offer for them, and node --check cannot see
+  // it (the syntax is fine; the semantics are not).
+  const SHADOW = /(?:const|let|var)\s+console\s*=/;
+  // Assembled at run time ON PURPOSE: written as a literal, this file would match its own rule -- the
+  // same self-match that made an earlier guard (queue-producer-convention) report itself.
+  const forbidden = ['const', 'console', '=', 'null;'].join(' ');
+  check('the shadow rule matches the shape it forbids (control)', SHADOW.test(forbidden));
+  const offenders = [];
+  for (const dir of ['tools', 'test']) {
+    for (const f of readdirSync(join(ROOT, dir)).filter((x) => x.endsWith('.mjs'))) {
+      if (SHADOW.test(readFileSync(join(ROOT, dir, f), 'utf8'))) offenders.push(dir + '/' + f);
+    }
+  }
+  check('no file shadows the global console object', offenders.length === 0, offenders.join(', ') || 'none');
+}
+
 // --- cleanup -----------------------------------------------------------------------------------
 rmSync(FIXTURE, { force: true });
 for (const l of listLocks()) {
