@@ -21,6 +21,26 @@
 //
 // Usage: node tools/deploy-stick.mjs [stickRoot]     (default E:\ — the DRIVE ROOT, not a subdir)
 //
+// EXIT CODES — three different situations, three different codes, because the REMEDY differs and a
+// single "it failed" verdict sent operators to debug code that was fine:
+//   0  every check passed: the code is deployed AND the console runs.
+//   1  the DEPLOYMENT is wrong: a file is missing, the copy drifted, the layout is wrong, or the
+//      console will not serve.
+//   2  bad invocation: the target is not a drive root.
+//   3  PRECONDITION not met: the code deployed correctly, but this volume has no operator credentials
+//      yet, so the checks that need an unlocked console are NOT RUN rather than failed. The remedy is
+//      the key ceremony, not a code fix. See tools/stick-preconditions.mjs for why this is separate.
+//
+// TRYING IT WITHOUT A PHYSICAL STICK. The drive-root rule below is load-bearing (the console resolves
+// its own credentials from its own location), so a plain folder will not do — but a virtual drive will:
+//     New-Item -ItemType Directory -Force .tmp\stick-v | Out-Null
+//     subst V: (Join-Path (Get-Location) '.tmp\stick-v')
+//     node tools/deploy-stick.mjs V:\
+//     subst V: /d
+// A freshly created virtual drive carries no credentials, so expect exit 3 and the NOT-RUN block above:
+// that is the precondition working, not a broken build. This is also the only way to exercise the
+// deployment path on a machine with no removable media.
+//
 // WHY THE ROOT AND NOT A SUBDIRECTORY. The console derives everything from its own location:
 //     APP      = dirname(app.mjs)
 //     USB_ROOT = resolve(APP, '..')
@@ -54,6 +74,7 @@ if (basename(STICK) !== '' && !/^[A-Za-z]:\\?$/.test(STICK)) {
 // That is correct, and it means the start-check below must know what it is deploying TO -- run
 // unmodified against a fixed disk it would report the gate working as "the console exited".
 const { volumeKind } = await import('../console/media.mjs');
+const { classifyStickVolume } = await import('./stick-preconditions.mjs');
 const TARGET_MEDIA = await volumeKind(STICK);
 const TARGET_IS_STICK = TARGET_MEDIA.kind === 'removable';
 console.log(`  target media   ${TARGET_MEDIA.kind}   (${TARGET_MEDIA.detail})`);
@@ -209,20 +230,43 @@ for (const t of TREES) {
 if (drift === 0) ok(checked + ' file(s) identical to the repo');
 
 // The layout facts the console depends on. These are the assertions whose absence caused the bug.
+// The two SECRET entries are marked, because their absence is a precondition rather than a fault --
+// see the gate immediately below, and tools/stick-preconditions.mjs for why the distinction matters.
 console.log('');
 console.log('--- the layout the console actually imports from ---');
-for (const required of [
-  join(STICK, 'console', 'app.mjs'),
-  join(STICK, 'console', 'src', 'identity.mjs'),
-  join(STICK, 'console', 'src', 'retract.mjs'),
-  join(STICK, 'console', 'public', 'index.html'),
-  join(STICK, 'src', 'identity.mjs'),
-  join(STICK, 'START-HERE.cmd'),
-  join(STICK, 'user-admin.json'),        // the operator's key: without it the app answers 503
-  join(STICK, 'trust.json'),
-]) {
-  if (existsSync(required)) ok('present: ' + relative(STICK, required));
-  else bad('MISSING: ' + relative(STICK, required) + '  (the console will not start without this)');
+const LAYOUT = [
+  { p: join(STICK, 'console', 'app.mjs') },
+  { p: join(STICK, 'console', 'src', 'identity.mjs') },
+  { p: join(STICK, 'console', 'src', 'retract.mjs') },
+  { p: join(STICK, 'console', 'public', 'index.html') },
+  { p: join(STICK, 'src', 'identity.mjs') },
+  { p: join(STICK, 'START-HERE.cmd') },
+  { p: join(STICK, 'user-admin.json'), secret: true },   // the operator's key: without it the app answers 503
+  { p: join(STICK, 'trust.json'), secret: true },
+];
+for (const { p, secret } of LAYOUT) {
+  if (existsSync(p)) ok('present: ' + relative(STICK, p));
+  else if (secret) console.log('  ----  absent, and this tool will not create it: ' + relative(STICK, p));
+  else bad('MISSING: ' + relative(STICK, p) + '  (the console will not start without this)');
+}
+
+// --- 2b. THE PRECONDITION. Everything below starts the console and asserts what it SERVES, and the
+// console reads the operator key on every request. With no key on the volume it answers 503 to
+// everything, so every page check fails on the locked page and the run ends declaring the stick
+// undeployable -- which blamed the code for a missing ceremony. Gate it here instead.
+const pre = classifyStickVolume({
+  hasUserAdmin: existsSync(join(STICK, 'user-admin.json')),
+  hasTrust: existsSync(join(STICK, 'trust.json')),
+  drive: STICK,
+});
+if (!pre.ok) {
+  console.log('');
+  console.log('  ' + pre.headline);
+  for (const line of pre.detail) console.log(line ? '  ' + line : '');
+  console.log('');
+  console.log('  ' + pre.verdict);
+  console.log('');
+  process.exit(pre.exitCode);
 }
 
 // --- 3. START IT. This is the check that can actually fail ---------------------
