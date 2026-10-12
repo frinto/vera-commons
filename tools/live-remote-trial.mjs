@@ -109,7 +109,7 @@ check('the issued challenge publishes the taxonomy (without it the gate is unpas
 
 // ── 2. JOINER opens a request over the public relay ─────────────────────────
 const requestId = b64u(crypto.randomBytes(24));
-const openBody = await stamp({ requestId, joinKey: joiner.publicKey, note: 'live remote trial' });
+const openBody = await stamp({ requestId, joinKey: joiner.publicKey, note: '[trial] live remote trial' });
 let r = await call('/admission/request', { method: 'POST', body: openBody });
 check('JOINER opens a request with no account and no token', r.status === 201, 'got ' + r.status + ' ' + JSON.stringify(r.json));
 

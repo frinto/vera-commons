@@ -131,7 +131,7 @@ check('the joiner presented an agentId matching its key', joiner.agentId === joi
 
 // --- 1. the request, over the public relay ---------------------------------------------------
 const requestId = b64u(crypto.randomBytes(24));
-const openBody = await stamp({ requestId, joinKey: joiner.publicKey, note: 'vendor gate trial' });
+const openBody = await stamp({ requestId, joinKey: joiner.publicKey, note: '[trial] vendor gate trial' });
 let r = await call('/admission/request', { method: 'POST', body: openBody });
 check('the request is opened on the public relay with no account and no token', r.status === 201,
   'got ' + r.status + ' ' + JSON.stringify(r.json));

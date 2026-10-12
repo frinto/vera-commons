@@ -66,7 +66,7 @@ async function runPair(tag, { corrupt }) {
   await sleep(6000);
 
   const joinerChild = spawn(process.execPath,
-    [join(ROOT, 'tools', 'join-apply.mjs'), 'apply', '--url', RELAY, '--key', keyFile, '--note', 'operator-command-trial', '--wait', '180'],
+    [join(ROOT, 'tools', 'join-apply.mjs'), 'apply', '--url', RELAY, '--key', keyFile, '--note', '[trial] operator-command-trial', '--wait', '180'],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   let jOut = '';
   joinerChild.stdout.on('data', (d) => { jOut += d; });

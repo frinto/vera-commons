@@ -263,7 +263,7 @@ console.log('--- a real joiner walks in over the public relay ---');
 
 const joiner = generateIdentity();
 const requestId = b64u(crypto.randomBytes(24));
-const openBody = await stamp({ requestId, joinKey: joiner.publicKey, note: 'console bridge trial' });
+const openBody = await stamp({ requestId, joinKey: joiner.publicKey, note: '[trial] console bridge trial' });
 let relay = await fetch(RELAY + '/admission/request', {
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(openBody),
   signal: AbortSignal.timeout(25000),

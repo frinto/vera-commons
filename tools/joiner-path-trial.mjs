@@ -139,7 +139,7 @@ async function runArm(label, { corrupt }) {
 
   // 1. the joiner opens its own request and waits for a challenge. Started FIRST and
   //    asynchronously, because `apply` is designed to block until the operator publishes.
-  const child = joinerAsync(['apply', '--url', RELAY, '--key', keyFile, '--note', 'joiner-path-trial', '--wait', '180']);
+  const child = joinerAsync(['apply', '--url', RELAY, '--key', keyFile, '--note', '[trial] joiner-path-trial', '--wait', '180']);
   let childOut = '';
   child.stdout.on('data', (d) => { childOut += d; });
   child.stderr.on('data', (d) => { childOut += d; });
