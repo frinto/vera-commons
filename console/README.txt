@@ -66,17 +66,18 @@ IF SOMETHING GOES WRONG
       The stick came out. Put it back in and click Reload.
 
   Nothing happens at all
-      Make sure you are double-clicking START-HERE.cmd inside
-      this AgentCommons folder on the stick.
+      Make sure you are double-clicking the START-HERE.cmd that
+      sits in the TOP folder of the stick, not this one.
 
 
 WHAT IS IN THIS FOLDER
-  START-HERE.cmd      the file you double-click
   app.mjs             the console program
   src\                the Agent Commons building blocks
   public\             the web page you see
   data\               messages and settings saved on the stick
   README.txt          this file
+
+  START-HERE.cmd itself is one level up, at the top of the stick.
 
   The keys themselves (user-admin.json, vera-admin.json,
   commons-root.json, trust.json) sit in the main folder of the

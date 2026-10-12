@@ -42,6 +42,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadIdentity, sign } from '../src/identity.mjs';
 import { interviewBytes } from '../src/admission.mjs';
+import { probePort, startConsole, stopConsole } from './console-runner.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STICK = process.env.AC_STICK || 'E:\\';
@@ -122,28 +123,15 @@ console.log(`admission: ${ID}`);
 console.log(`statement: ${STATEMENT.length} chars, ${PARTS.length} paragraph(s), ${Object.keys(ANSWERS).length} mapped answer(s)`);
 console.log('');
 
-const child = spawn(process.execPath, [APP, '--port', String(PORT), '--no-browser'], {
-  cwd: dirname(APP), stdio: ['ignore', 'pipe', 'pipe'],
-});
-let out = '';
-const tokenReady = new Promise((res) => {
-  const onData = (c) => {
-    out += String(c);
-    const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(out);
-    if (m) res(m[1]);
-  };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-  setTimeout(() => res(null), 20000);
-});
-function stop() {
-  try { child.kill(); } catch { /* already gone */ }
-}
+// tools/console-runner.mjs claims the port before the spawn, refuses to start when something is
+// already listening (naming the holder), and proves the port was released afterwards. A stale console
+// from a stray copy of this project sat on one of these ports for 7h19m on 2026-10-12; a run that raced
+// it would have reported a stranger's build as its own.
+const console = await startConsole({ app: APP, port: PORT, args: ['--no-browser'], tool: 'admission-ceremony.mjs' });
 
 let exitCode = 0;
 try {
-  const TOKEN = await tokenReady;
-  if (!TOKEN) throw new Error('the console never printed a token: ' + out.slice(-400));
+  const TOKEN = console.token;
   const BASE = `http://127.0.0.1:${PORT}`;
   // The per-run token travels as `?t=` — it is a CSRF guard against other local processes and
   // stray pages, not an API credential. The admission routes the JOINING AGENT uses
@@ -277,7 +265,11 @@ try {
   failures++;
   console.log(`  FAIL ${err.message}`);
 } finally {
-  stop();
+  await stopConsole(console);   // kill, wait for the exit, clear the lock
+  if (await probePort(PORT)) {  // and prove it: a leaked listener is a failed check, not a mystery
+    failures++;
+    console.log(`  FAIL a console is STILL listening on port ${PORT} after the run`);
+  }
 }
 
 console.log('');

@@ -39,12 +39,13 @@
 //
 // --dry stops after the record reaches `answered` and reports what it would have done.
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { generateIdentity, saveIdentity } from '../src/identity.mjs';
+import { probePort, startConsole, stopAndVerify } from './console-runner.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const STICK = process.env.AC_STICK || 'E:\\';
@@ -108,7 +109,7 @@ console.log(`identity: ${IDENTITY_DIR}`);
 console.log(`before  : ${before.records} record(s), ${before.permits} permit(s), sha ${before.store.slice(0, 16)}`);
 console.log('');
 
-let child = null;
+let console = null;
 let exitCode = 0;
 try {
   const identity = generateIdentity();
@@ -122,19 +123,13 @@ try {
   console.log('');
 
   // --- phase A: the joiner half, against the deployed console --------------------------------
-  child = spawn(process.execPath, [APP, '--port', String(PORT), '--no-browser'], {
-    cwd: dirname(APP), stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let out = '';
-  const ready = new Promise((res) => {
-    const onData = (c) => { out += String(c); const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(out); if (m) res(m[1]); };
-    child.stdout.on('data', onData);
-    child.stderr.on('data', onData);
-    setTimeout(() => res(null), 20000);
-  });
-  const TOKEN = await ready;
-  if (!TOKEN) throw new Error('the console never printed a token: ' + out.slice(-300));
-  const BASE = `http://127.0.0.1:${PORT}`;
+  // tools/console-runner.mjs owns the port claim. It REFUSES to start when the port is already
+  // serving (naming the holder), and it can prove the port is free after the stop. On 2026-10-12 a
+  // console started from a stray copy of this project held 127.0.0.1:7788 for 7h19m; any later run
+  // that raced it would have reported a stranger's build as its own.
+  console = await startConsole({ app: APP, port: PORT, args: ['--no-browser'], tool: 'ceremony-live-trial.mjs' });
+  const TOKEN = console.token;
+  const BASE = console.base;
   const call = async (path, init) => {
     const sep = path.includes('?') ? '&' : '?';
     const res = await fetch(`${BASE}${path}${sep}t=${TOKEN}`, {
@@ -168,8 +163,9 @@ try {
   const rec = (listed.body?.admissions ?? []).find((r) => r.id === id);
   check('the record reached state "answered" — the ceremony tool\'s precondition', rec?.status === 'answered', `status=${rec?.status}`);
 
-  child.kill();
-  child = null;
+  await stopAndVerify(console);
+  check('no console is left listening on the trial port after phase A', (await probePort(PORT)) === false);
+  console = null;
 
   if (DRY) {
     console.log('');
@@ -216,12 +212,14 @@ try {
     check('the store changed (a record was added), so the assertions above describe a real write',
       sha(STORE) !== before.store && after.admissions.length === before.records + 1,
       `${before.records} -> ${after.admissions.length}`);
+    check('the ceremony tool left no console listening on its own port after it exited',
+      (await probePort(PORT + 2)) === false, `port ${PORT + 2}`);
   }
 } catch (err) {
   fail++;
   console.log('FAIL ' + err.message);
 } finally {
-  try { child?.kill(); } catch { /* already gone */ }
+  if (console) { try { await stopAndVerify(console); } catch { /* the checks above report it */ } }
   rmSync(STATEMENT_FILE, { force: true });
 }
 

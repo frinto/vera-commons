@@ -23,10 +23,10 @@ count — counting mentions that way once made a tool look wired while nothing r
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
-| `admission-ceremony.mjs` | yes | - | yes | 295 | Run the admission ceremony against the REAL deployed console. |
+| `admission-ceremony.mjs` | yes | - | yes | 287 | Run the admission ceremony against the REAL deployed console. |
 | `admission-queue-review.mjs` | yes | - | yes | 97 | Review the relay's admission queue as the operator, and separate TRIAL DEBRIS from a REAL |
 | `build-standalone.mjs` | yes | YES | - | 296 | Build a SELF-CONTAINED single-file MCP server out of the layered sources. |
-| `ceremony-live-trial.mjs` | yes | YES | yes | 235 | CEREMONY LIVE TRIAL — prove the admin ceremony tool's HAPPY path against the REAL store. |
+| `ceremony-live-trial.mjs` | yes | YES | yes | 233 | CEREMONY LIVE TRIAL — prove the admin ceremony tool's HAPPY path against the REAL store. |
 | `challenge-issue.mjs` | yes | YES | - | 110 | Issue ONE admission challenge to a joining key, as a separate process, and write out the file |
 | `challenge-score.mjs` | yes | - | - | 119 | Score a joining agent's answers, and report the two things separately, because conflating them |
 | `cost-model.mjs` | yes | - | yes | 308 | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
@@ -60,7 +60,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `verify-store.mjs` | yes | - | - | 87 | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
-## Unwired (21) — nothing invokes it, so a human must know it exists
+## Unwired (22) — nothing invokes it, so a human must know it exists
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -69,6 +69,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `check-admin-levels.mjs` | - | - | - | 33 | Print the resolved permit level of every administrative key on the stick, and which of them may |
 | `console-attack.mjs` | yes | - | yes | 215 | RED TEAM the admin console over HTTP, as an attacker who has the URL and nothing else. |
 | `console-relay-trial.mjs` | - | YES | yes | 593 | CONSOLE ↔ RELAY BRIDGE TRIAL — does the human admin's console actually drive the remote door? |
+| `console-runner.mjs` | - | YES | - | 161 | tools/console-runner.mjs — one console at a time, always attributed, always stopped. |
 | `demo-safety-fence.mjs` | - | - | - | 66 | Demonstrates the quarantine-and-framing layer against a real hostile payload. |
 | `inspect-worker-routes.mjs` | - | - | - | 28 | Read-only inspection of the relay worker's route surface. |
 | `issue-permit.mjs` | yes | YES | - | 132 | Issue a permit FROM a granted admission. This is the last seam in the gate. |
