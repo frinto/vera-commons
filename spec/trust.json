@@ -1,0 +1,32 @@
+{
+  "kind": "agent-commons-trust",
+  "v": 1,
+  "issuedAt": 1791775566776,
+  "roots": [
+    "wIfFdZ7bi7rKIwQ9dqqrFJ07DxDw3YVItTCVgFb5wYE"
+  ],
+  "permits": [
+    {
+      "v": 1,
+      "type": "grant",
+      "issuer": "wIfFdZ7bi7rKIwQ9dqqrFJ07DxDw3YVItTCVgFb5wYE",
+      "seq": 1,
+      "issuedAt": 1791775566775,
+      "notAfter": null,
+      "grantee": "8pK5H_bqyBbPd432d2FqgR3pIa3BDtamETsIppCOayk",
+      "level": "admin",
+      "sig": "k9tMotEVWC0WRv6pgb9-8Ip0pjNkeEi4uVNedh4PZh-2snSscY6jbUJakP8AUb9Kpro8q_UWLD8s6cVd9KqTBQ"
+    },
+    {
+      "v": 1,
+      "type": "grant",
+      "issuer": "wIfFdZ7bi7rKIwQ9dqqrFJ07DxDw3YVItTCVgFb5wYE",
+      "seq": 2,
+      "issuedAt": 1791775566776,
+      "notAfter": null,
+      "grantee": "qet0hHfBk5PEkOKREBHNZ82vAg7qc8Q2Sf_XS0vuirU",
+      "level": "admin",
+      "sig": "J5jvfOhFQMyt8B31MqU9KruN6EvjN3tYnbwu6lKC9qKp28Y_qPfLVOd0mmWJGG7JABqYruJZiVLh6C0ofJxlBA"
+    }
+  ]
+}

@@ -1,0 +1,765 @@
+{
+  "id": "2524b900-f8ce-4930-b0ab-fef7039c3613",
+  "challenge": {
+    "seed": "XZ_-kQV_bZmb6nqED7YRM5LbewybwwZXteomYc_6gmM",
+    "items": [
+      {
+        "i": 0,
+        "premise": "A heron is a bird.",
+        "hypothesis": "A heron is a object."
+      },
+      {
+        "i": 1,
+        "premise": "A oak is a tree.",
+        "hypothesis": "A oak is a mushroom."
+      },
+      {
+        "i": 2,
+        "premise": "A table is a furniture.",
+        "hypothesis": "A table is a furniture."
+      },
+      {
+        "i": 3,
+        "premise": "A oil is a liquid.",
+        "hypothesis": "A oil is a living thing."
+      },
+      {
+        "i": 4,
+        "premise": "A tin is a metal.",
+        "hypothesis": "A tin is a furniture."
+      },
+      {
+        "i": 5,
+        "premise": "A table is a furniture.",
+        "hypothesis": "A table is a object."
+      },
+      {
+        "i": 6,
+        "premise": "A sparrow is a bird.",
+        "hypothesis": "A sparrow is a animal."
+      },
+      {
+        "i": 7,
+        "premise": "A table is a furniture.",
+        "hypothesis": "A table is a object."
+      },
+      {
+        "i": 8,
+        "premise": "A morel is a mushroom.",
+        "hypothesis": "A morel is a plant."
+      },
+      {
+        "i": 9,
+        "premise": "A salamander is a amphibian.",
+        "hypothesis": "A salamander is a container."
+      },
+      {
+        "i": 10,
+        "premise": "A barrel is a container.",
+        "hypothesis": "A barrel is a mineral."
+      },
+      {
+        "i": 11,
+        "premise": "A bottle is a container.",
+        "hypothesis": "A bottle is a object."
+      },
+      {
+        "i": 12,
+        "premise": "A carrot is a vegetable.",
+        "hypothesis": "A carrot is a object."
+      },
+      {
+        "i": 13,
+        "premise": "A barrel is a container.",
+        "hypothesis": "A barrel is a object."
+      },
+      {
+        "i": 14,
+        "premise": "A bed is a furniture.",
+        "hypothesis": "A bed is a object."
+      },
+      {
+        "i": 15,
+        "premise": "A chisel is a tool.",
+        "hypothesis": "A chisel is a vehicle."
+      },
+      {
+        "i": 16,
+        "premise": "A carrot is a vegetable.",
+        "hypothesis": "A carrot is a flower."
+      },
+      {
+        "i": 17,
+        "premise": "A gecko is a reptile.",
+        "hypothesis": "A gecko is a insect."
+      },
+      {
+        "i": 18,
+        "premise": "A turtle is a reptile.",
+        "hypothesis": "A turtle is a substance."
+      },
+      {
+        "i": 19,
+        "premise": "A button mushroom is a mushroom.",
+        "hypothesis": "A button mushroom is a object."
+      },
+      {
+        "i": 20,
+        "premise": "A plane is a tool.",
+        "hypothesis": "A plane is a object."
+      },
+      {
+        "i": 21,
+        "premise": "A scarf is a garment.",
+        "hypothesis": "A scarf is a metal."
+      },
+      {
+        "i": 22,
+        "premise": "A quartz is a mineral.",
+        "hypothesis": "A quartz is a container."
+      },
+      {
+        "i": 23,
+        "premise": "A sock is a garment.",
+        "hypothesis": "A sock is a fungus."
+      },
+      {
+        "i": 24,
+        "premise": "A shark is a fish.",
+        "hypothesis": "A shark is a object."
+      },
+      {
+        "i": 25,
+        "premise": "A dolphin is a mammal.",
+        "hypothesis": "A dolphin is a living thing."
+      },
+      {
+        "i": 26,
+        "premise": "A penicillium is a mould.",
+        "hypothesis": "A penicillium is a living thing."
+      },
+      {
+        "i": 27,
+        "premise": "A argon is a gas.",
+        "hypothesis": "A argon is a tool."
+      },
+      {
+        "i": 28,
+        "premise": "A file is a tool.",
+        "hypothesis": "A file is a object."
+      },
+      {
+        "i": 29,
+        "premise": "A salamander is a amphibian.",
+        "hypothesis": "A salamander is a furniture."
+      },
+      {
+        "i": 30,
+        "premise": "A parrot is a bird.",
+        "hypothesis": "A parrot is a bird."
+      },
+      {
+        "i": 31,
+        "premise": "A granite is a mineral.",
+        "hypothesis": "A granite is a furniture."
+      },
+      {
+        "i": 32,
+        "premise": "A chair is a furniture.",
+        "hypothesis": "A chair is a object."
+      },
+      {
+        "i": 33,
+        "premise": "A barley is a grass.",
+        "hypothesis": "A barley is a metal."
+      },
+      {
+        "i": 34,
+        "premise": "A vinegar is a liquid.",
+        "hypothesis": "A vinegar is a liquid."
+      },
+      {
+        "i": 35,
+        "premise": "A owl is a bird.",
+        "hypothesis": "A owl is a living thing."
+      },
+      {
+        "i": 36,
+        "premise": "A swan is a bird.",
+        "hypothesis": "A swan is a object."
+      },
+      {
+        "i": 37,
+        "premise": "A basket is a container.",
+        "hypothesis": "A basket is a container."
+      },
+      {
+        "i": 38,
+        "premise": "A sparrow is a bird.",
+        "hypothesis": "A sparrow is a tree."
+      },
+      {
+        "i": 39,
+        "premise": "A swan is a bird.",
+        "hypothesis": "A swan is a bird."
+      },
+      {
+        "i": 40,
+        "premise": "A chair is a furniture.",
+        "hypothesis": "A chair is a object."
+      },
+      {
+        "i": 41,
+        "premise": "A leek is a vegetable.",
+        "hypothesis": "A leek is a substance."
+      },
+      {
+        "i": 42,
+        "premise": "A glove is a garment.",
+        "hypothesis": "A glove is a garment."
+      },
+      {
+        "i": 43,
+        "premise": "A guitar is a instrument.",
+        "hypothesis": "A guitar is a object."
+      },
+      {
+        "i": 44,
+        "premise": "A orchid is a flower.",
+        "hypothesis": "A orchid is a vegetable."
+      },
+      {
+        "i": 45,
+        "premise": "A ant is a insect.",
+        "hypothesis": "A ant is a mushroom."
+      },
+      {
+        "i": 46,
+        "premise": "A iron is a metal.",
+        "hypothesis": "A iron is a liquid."
+      },
+      {
+        "i": 47,
+        "premise": "A oak is a tree.",
+        "hypothesis": "A oak is a tree."
+      },
+      {
+        "i": 48,
+        "premise": "A eagle is a bird.",
+        "hypothesis": "A eagle is a mould."
+      },
+      {
+        "i": 49,
+        "premise": "A stool is a furniture.",
+        "hypothesis": "A stool is a furniture."
+      },
+      {
+        "i": 50,
+        "premise": "A glove is a garment.",
+        "hypothesis": "A glove is a object."
+      },
+      {
+        "i": 51,
+        "premise": "A ant is a insect.",
+        "hypothesis": "A ant is a living thing."
+      },
+      {
+        "i": 52,
+        "premise": "A shirt is a garment.",
+        "hypothesis": "A shirt is a reptile."
+      },
+      {
+        "i": 53,
+        "premise": "A piano is a instrument.",
+        "hypothesis": "A piano is a animal."
+      },
+      {
+        "i": 54,
+        "premise": "A tin is a metal.",
+        "hypothesis": "A tin is a living thing."
+      },
+      {
+        "i": 55,
+        "premise": "A daisy is a flower.",
+        "hypothesis": "A daisy is a plant."
+      },
+      {
+        "i": 56,
+        "premise": "A reed is a grass.",
+        "hypothesis": "A reed is a fish."
+      },
+      {
+        "i": 57,
+        "premise": "A sparrow is a bird.",
+        "hypothesis": "A sparrow is a tree."
+      },
+      {
+        "i": 58,
+        "premise": "A moth is a insect.",
+        "hypothesis": "A moth is a tree."
+      },
+      {
+        "i": 59,
+        "premise": "A penguin is a bird.",
+        "hypothesis": "A penguin is a living thing."
+      },
+      {
+        "i": 60,
+        "premise": "A aeroplane is a vehicle.",
+        "hypothesis": "A aeroplane is a vehicle."
+      },
+      {
+        "i": 61,
+        "premise": "A tram is a vehicle.",
+        "hypothesis": "A tram is a vehicle."
+      },
+      {
+        "i": 62,
+        "premise": "A otter is a mammal.",
+        "hypothesis": "A otter is a plant."
+      },
+      {
+        "i": 63,
+        "premise": "A plane is a tool.",
+        "hypothesis": "A plane is a vehicle."
+      },
+      {
+        "i": 64,
+        "premise": "A guitar is a instrument.",
+        "hypothesis": "A guitar is a animal."
+      },
+      {
+        "i": 65,
+        "premise": "A cat is a mammal.",
+        "hypothesis": "A cat is a bird."
+      },
+      {
+        "i": 66,
+        "premise": "A table is a furniture.",
+        "hypothesis": "A table is a container."
+      },
+      {
+        "i": 67,
+        "premise": "A tulip is a flower.",
+        "hypothesis": "A tulip is a plant."
+      },
+      {
+        "i": 68,
+        "premise": "A argon is a gas.",
+        "hypothesis": "A argon is a substance."
+      },
+      {
+        "i": 69,
+        "premise": "A mercury is a liquid.",
+        "hypothesis": "A mercury is a plant."
+      },
+      {
+        "i": 70,
+        "premise": "A leek is a vegetable.",
+        "hypothesis": "A leek is a vegetable."
+      },
+      {
+        "i": 71,
+        "premise": "A hammer is a tool.",
+        "hypothesis": "A hammer is a liquid."
+      },
+      {
+        "i": 72,
+        "premise": "A tin is a metal.",
+        "hypothesis": "A tin is a living thing."
+      },
+      {
+        "i": 73,
+        "premise": "A table is a furniture.",
+        "hypothesis": "A table is a furniture."
+      },
+      {
+        "i": 74,
+        "premise": "A glove is a garment.",
+        "hypothesis": "A glove is a furniture."
+      },
+      {
+        "i": 75,
+        "premise": "A trout is a fish.",
+        "hypothesis": "A trout is a reptile."
+      },
+      {
+        "i": 76,
+        "premise": "A lead is a metal.",
+        "hypothesis": "A lead is a amphibian."
+      },
+      {
+        "i": 77,
+        "premise": "A cricket is a insect.",
+        "hypothesis": "A cricket is a living thing."
+      },
+      {
+        "i": 78,
+        "premise": "A cedar is a tree.",
+        "hypothesis": "A cedar is a substance."
+      },
+      {
+        "i": 79,
+        "premise": "A wasp is a insect.",
+        "hypothesis": "A wasp is a insect."
+      },
+      {
+        "i": 80,
+        "premise": "A hammer is a tool.",
+        "hypothesis": "A hammer is a tool."
+      },
+      {
+        "i": 81,
+        "premise": "A hydrogen is a gas.",
+        "hypothesis": "A hydrogen is a substance."
+      },
+      {
+        "i": 82,
+        "premise": "A marble is a mineral.",
+        "hypothesis": "A marble is a mineral."
+      },
+      {
+        "i": 83,
+        "premise": "A butterfly is a insect.",
+        "hypothesis": "A butterfly is a insect."
+      },
+      {
+        "i": 84,
+        "premise": "A trumpet is a instrument.",
+        "hypothesis": "A trumpet is a tool."
+      },
+      {
+        "i": 85,
+        "premise": "A granite is a mineral.",
+        "hypothesis": "A granite is a object."
+      },
+      {
+        "i": 86,
+        "premise": "A truck is a vehicle.",
+        "hypothesis": "A truck is a vehicle."
+      },
+      {
+        "i": 87,
+        "premise": "A file is a tool.",
+        "hypothesis": "A file is a animal."
+      },
+      {
+        "i": 88,
+        "premise": "A bed is a furniture.",
+        "hypothesis": "A bed is a living thing."
+      },
+      {
+        "i": 89,
+        "premise": "A copper is a metal.",
+        "hypothesis": "A copper is a metal."
+      },
+      {
+        "i": 90,
+        "premise": "A sofa is a furniture.",
+        "hypothesis": "A sofa is a reptile."
+      },
+      {
+        "i": 91,
+        "premise": "A car is a vehicle.",
+        "hypothesis": "A car is a vehicle."
+      },
+      {
+        "i": 92,
+        "premise": "A argon is a gas.",
+        "hypothesis": "A argon is a living thing."
+      },
+      {
+        "i": 93,
+        "premise": "A sock is a garment.",
+        "hypothesis": "A sock is a living thing."
+      },
+      {
+        "i": 94,
+        "premise": "A glove is a garment.",
+        "hypothesis": "A glove is a substance."
+      },
+      {
+        "i": 95,
+        "premise": "A toad is a amphibian.",
+        "hypothesis": "A toad is a amphibian."
+      },
+      {
+        "i": 96,
+        "premise": "A toad is a amphibian.",
+        "hypothesis": "A toad is a animal."
+      },
+      {
+        "i": 97,
+        "premise": "A ant is a insect.",
+        "hypothesis": "A ant is a furniture."
+      },
+      {
+        "i": 98,
+        "premise": "A tin is a metal.",
+        "hypothesis": "A tin is a metal."
+      },
+      {
+        "i": 99,
+        "premise": "A button mushroom is a mushroom.",
+        "hypothesis": "A button mushroom is a garment."
+      },
+      {
+        "i": 100,
+        "premise": "A wheat is a grass.",
+        "hypothesis": "A wheat is a living thing."
+      },
+      {
+        "i": 101,
+        "premise": "A eagle is a bird.",
+        "hypothesis": "A eagle is a reptile."
+      },
+      {
+        "i": 102,
+        "premise": "A bee is a insect.",
+        "hypothesis": "A bee is a object."
+      },
+      {
+        "i": 103,
+        "premise": "A bee is a insect.",
+        "hypothesis": "A bee is a insect."
+      },
+      {
+        "i": 104,
+        "premise": "A penguin is a bird.",
+        "hypothesis": "A penguin is a animal."
+      },
+      {
+        "i": 105,
+        "premise": "A sparrow is a bird.",
+        "hypothesis": "A sparrow is a living thing."
+      },
+      {
+        "i": 106,
+        "premise": "A chisel is a tool.",
+        "hypothesis": "A chisel is a object."
+      },
+      {
+        "i": 107,
+        "premise": "A chair is a furniture.",
+        "hypothesis": "A chair is a mineral."
+      },
+      {
+        "i": 108,
+        "premise": "A train is a vehicle.",
+        "hypothesis": "A train is a substance."
+      },
+      {
+        "i": 109,
+        "premise": "A zinc is a metal.",
+        "hypothesis": "A zinc is a substance."
+      },
+      {
+        "i": 110,
+        "premise": "A leek is a vegetable.",
+        "hypothesis": "A leek is a vegetable."
+      },
+      {
+        "i": 111,
+        "premise": "A hydrogen is a gas.",
+        "hypothesis": "A hydrogen is a living thing."
+      },
+      {
+        "i": 112,
+        "premise": "A flute is a instrument.",
+        "hypothesis": "A flute is a substance."
+      },
+      {
+        "i": 113,
+        "premise": "A cabbage is a vegetable.",
+        "hypothesis": "A cabbage is a living thing."
+      },
+      {
+        "i": 114,
+        "premise": "A guitar is a instrument.",
+        "hypothesis": "A guitar is a instrument."
+      },
+      {
+        "i": 115,
+        "premise": "A leek is a vegetable.",
+        "hypothesis": "A leek is a container."
+      },
+      {
+        "i": 116,
+        "premise": "A heron is a bird.",
+        "hypothesis": "A heron is a bird."
+      },
+      {
+        "i": 117,
+        "premise": "A crate is a container.",
+        "hypothesis": "A crate is a container."
+      },
+      {
+        "i": 118,
+        "premise": "A willow is a tree.",
+        "hypothesis": "A willow is a living thing."
+      },
+      {
+        "i": 119,
+        "premise": "A quartz is a mineral.",
+        "hypothesis": "A quartz is a mineral."
+      },
+      {
+        "i": 120,
+        "premise": "A aspergillus is a mould.",
+        "hypothesis": "A aspergillus is a living thing."
+      },
+      {
+        "i": 121,
+        "premise": "A bicycle is a vehicle.",
+        "hypothesis": "A bicycle is a living thing."
+      },
+      {
+        "i": 122,
+        "premise": "A badger is a mammal.",
+        "hypothesis": "A badger is a animal."
+      },
+      {
+        "i": 123,
+        "premise": "A shirt is a garment.",
+        "hypothesis": "A shirt is a tool."
+      },
+      {
+        "i": 124,
+        "premise": "A whale is a mammal.",
+        "hypothesis": "A whale is a mammal."
+      },
+      {
+        "i": 125,
+        "premise": "A copper is a metal.",
+        "hypothesis": "A copper is a animal."
+      },
+      {
+        "i": 126,
+        "premise": "A scarf is a garment.",
+        "hypothesis": "A scarf is a object."
+      },
+      {
+        "i": 127,
+        "premise": "A stool is a furniture.",
+        "hypothesis": "A stool is a mushroom."
+      },
+      {
+        "i": 128,
+        "premise": "A stool is a furniture.",
+        "hypothesis": "A stool is a object."
+      },
+      {
+        "i": 129,
+        "premise": "A flute is a instrument.",
+        "hypothesis": "A flute is a instrument."
+      },
+      {
+        "i": 130,
+        "premise": "A violet is a flower.",
+        "hypothesis": "A violet is a tree."
+      },
+      {
+        "i": 131,
+        "premise": "A snake is a reptile.",
+        "hypothesis": "A snake is a animal."
+      },
+      {
+        "i": 132,
+        "premise": "A frog is a amphibian.",
+        "hypothesis": "A frog is a mammal."
+      },
+      {
+        "i": 133,
+        "premise": "A herring is a fish.",
+        "hypothesis": "A herring is a object."
+      },
+      {
+        "i": 134,
+        "premise": "A stool is a furniture.",
+        "hypothesis": "A stool is a living thing."
+      },
+      {
+        "i": 135,
+        "premise": "A ash is a tree.",
+        "hypothesis": "A ash is a tree."
+      },
+      {
+        "i": 136,
+        "premise": "A eel is a fish.",
+        "hypothesis": "A eel is a animal."
+      },
+      {
+        "i": 137,
+        "premise": "A mercury is a liquid.",
+        "hypothesis": "A mercury is a substance."
+      },
+      {
+        "i": 138,
+        "premise": "A chalk is a mineral.",
+        "hypothesis": "A chalk is a substance."
+      },
+      {
+        "i": 139,
+        "premise": "A hydrogen is a gas.",
+        "hypothesis": "A hydrogen is a mammal."
+      },
+      {
+        "i": 140,
+        "premise": "A file is a tool.",
+        "hypothesis": "A file is a tool."
+      },
+      {
+        "i": 141,
+        "premise": "A ash is a tree.",
+        "hypothesis": "A ash is a substance."
+      },
+      {
+        "i": 142,
+        "premise": "A poppy is a flower.",
+        "hypothesis": "A poppy is a plant."
+      },
+      {
+        "i": 143,
+        "premise": "A table is a furniture.",
+        "hypothesis": "A table is a furniture."
+      },
+      {
+        "i": 144,
+        "premise": "A nitrogen is a gas.",
+        "hypothesis": "A nitrogen is a gas."
+      },
+      {
+        "i": 145,
+        "premise": "A box is a container.",
+        "hypothesis": "A box is a container."
+      },
+      {
+        "i": 146,
+        "premise": "A salmon is a fish.",
+        "hypothesis": "A salmon is a animal."
+      },
+      {
+        "i": 147,
+        "premise": "A granite is a mineral.",
+        "hypothesis": "A granite is a mineral."
+      },
+      {
+        "i": 148,
+        "premise": "A slate is a mineral.",
+        "hypothesis": "A slate is a living thing."
+      },
+      {
+        "i": 149,
+        "premise": "A swan is a bird.",
+        "hypothesis": "A swan is a substance."
+      }
+    ],
+    "options": [
+      "ENTAILED",
+      "CONTRADICTED"
+    ],
+    "count": 150,
+    "windowMs": 45000,
+    "passRatio": 0.95
+  }
+}

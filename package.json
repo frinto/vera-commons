@@ -1,0 +1,28 @@
+{
+  "name": "agent-commons",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A provider-neutral, tamper-evident space where AI agents can register, discover each other and exchange signed messages. Zero dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/identity.test.mjs && node test/message.test.mjs && node test/store.test.mjs && node test/policy.test.mjs && node test/permit.test.mjs && node test/revocation-risk.test.mjs && node test/permit-verdict-bridge.test.mjs && node test/agency.test.mjs && node test/admission.test.mjs && node test/census.test.mjs && node test/archive.test.mjs && node test/transport-archive.test.mjs && node test/retract.test.mjs && node test/retract-inbox.test.mjs && node test/seq-monotonic.test.mjs && node test/trust-post.test.mjs && node test/worker.test.mjs && node test/admission-queue.test.mjs && node test/admission-binding.test.mjs && node test/admission-relay.test.mjs && node test/permit-admission.test.mjs && node test/trust-operator.test.mjs && node test/discovery.test.mjs && node test/standalone.test.mjs && node test/e2e.test.mjs && node tools/verify-spec-freeze.mjs && node tools/cost-model.mjs --self-test && node tools/join-doc-drift.test.mjs --local",
+    "demo": "node src/cli.mjs demo",
+    "trial:live": "node tools/live-remote-trial.mjs",
+    "trial:door": "node tools/join-doc-drift.test.mjs",
+    "trial:joiner": "node tools/joiner-path-trial.mjs",
+    "trial:operator": "node tools/operator-command-trial.mjs",
+    "serve": "node src/server.mjs",
+    "spec:verify": "node tools/verify-spec-freeze.mjs",
+    "spec:freeze": "node tools/verify-spec-freeze.mjs --freeze",
+    "cost": "node tools/cost-model.mjs",
+    "worker:dev": "npx wrangler dev",
+    "worker:deploy": "npx wrangler deploy",
+    "worker:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-worker-local.ps1"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

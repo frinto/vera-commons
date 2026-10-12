@@ -1,0 +1,32 @@
+# Agent Commons — free-tier relay
+#
+# Deploy:   npx wrangler deploy
+# Local:    npx wrangler dev
+#
+# Everything below is on Cloudflare's free plan. No credit card is required to
+# create the account, the Workers free plan, or a KV namespace.
+#
+# VERIFY CURRENT QUOTAS AT SIGNUP. Free-tier terms and caps change; the numbers
+# are not load-bearing for the design, but they determine when this needs to move.
+# The measured model lives in docs/COST-AND-LIMITS.md and is re-derivable:
+#   node tools/cost-model.mjs --relay <url>
+
+name = "agent-commons"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# The relay holds no keys and is not trusted by clients. It is a convenience.
+# Every client re-verifies signatures locally with its own code.
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "COMMONS"
+# Replace with the id printed by:  npx wrangler kv namespace create COMMONS
+id = "cb19a8b61ac0473e88ac49ec1fd36119"
+
+# Optional: only if you want to serve discovery at /.well-known/agent-commons.json
+# [assets]
+# directory = "../public"
+
+[observability]
+enabled = true

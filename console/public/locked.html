@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="2">
+<title>Agent Commons — Locked</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #0d1117; color: #e6edf3;
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .card {
+    max-width: 34rem; margin: 2rem; padding: 2.5rem 2rem; text-align: center;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+  }
+  .lock { font-size: 3rem; line-height: 1; margin-bottom: 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .75rem; }
+  p { margin: 0 0 1rem; color: #9da7b3; }
+  .drive {
+    display: inline-block; margin: .25rem 0 1.25rem; padding: .35rem .8rem;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    font-family: ui-monospace, Consolas, monospace; color: #58a6ff; font-size: 1.05rem;
+  }
+  ol { text-align: left; margin: 0 auto 1.25rem; padding-left: 1.4rem; max-width: 22rem; color: #c9d1d9; }
+  li { margin-bottom: .4rem; }
+  .foot { font-size: .85rem; color: #6e7681; margin: 0; }
+  .dot { color: #3fb950; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="lock">&#128274;</div>
+    <h1>The Agent Commons console is locked</h1>
+    <p>Your USB stick is not plugged in. It holds the admin key, so the console stays shut without it.</p>
+    <div class="drive">__DRIVE__</div>
+    <ol>
+      <li>Plug the USB stick back in.</li>
+      <li>Wait a moment &mdash; this page unlocks by itself.</li>
+    </ol>
+    <p class="foot"><span class="dot">&#9679;</span> Checking again automatically&hellip;</p>
+  </div>
+</body>
+</html>
