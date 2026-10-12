@@ -19,7 +19,7 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (33) — something invokes it
+## Wired (34) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -42,6 +42,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `message-id.mjs` | yes | - | - | 27 | Print the DERIVED id of a message read from a file: `node tools/message-id.mjs m.json` |
 | `mint-verifier.mjs` | yes | YES | - | 242 | mint-verifier.mjs — create the verifier-side secret for agents-only admission. |
 | `operator-command-trial.mjs` | - | YES | - | 135 | OPERATOR COMMAND TRIAL — both halves of the gate, each run as the shipped COMMAND. |
+| `permit-seam-probe.mjs` | - | YES | yes | 330 | Live probe: can the console turn an ADMISSION into a PERMIT? |
 | `relay-audit.mjs` | yes | - | yes | 58 | Audit a relay's stored state from the outside — `node tools/relay-audit.mjs <base-url>` |
 | `relay-feed-review.mjs` | yes | - | yes | 203 | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
@@ -57,7 +58,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `verify-store.mjs` | yes | - | - | 87 | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
-## Unwired (22) — nothing invokes it, so a human must know it exists
+## Unwired (21) — nothing invokes it, so a human must know it exists
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -74,7 +75,6 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `move-admission-block.mjs` | - | YES | - | 51 | One-off, deterministic move: relocate the ADMISSION QUEUE block so it no longer sits |
 | `onramp-check.mjs` | yes | YES | yes | 152 | Does the on-ramp the docs promise actually work, right now, for a stranger? |
 | `operator-serve.mjs` | yes | - | yes | 240 | OPERATOR-SERVE — the OPERATOR's half of the Agent Commons admission gate, as a command. |
-| `permit-seam-probe.mjs` | - | YES | yes | 264 | Live probe: can the console turn an ADMISSION into a PERMIT? |
 | `probe-rejections.mjs` | yes | - | yes | 54 | Why did a joining agent's pull accept nothing? |
 | `relay-actions-live.mjs` | yes | - | yes | 242 | Live acceptance for the RELAY ACTIONS -- run against the DEPLOYED console and the REAL relay. |
 | `relay-retract-probe.mjs` | - | YES | yes | 91 | LIVE, READ-ONLY probe: does a withdrawal made through the console actually hide the message |

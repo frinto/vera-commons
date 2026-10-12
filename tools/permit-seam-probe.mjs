@@ -63,21 +63,51 @@ const verifier = JSON.parse(readFileSync(join(STICK, 'verifier.json'), 'utf8'));
 verifier.dir = 'data/admissions';            // relative to the TEMP root, not the stick
 writeFileSync(join(WORK, 'verifier.json'), JSON.stringify(verifier, null, 2));
 
-const child = spawn(process.execPath, [join(WORK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser'], {
-  cwd: join(WORK, 'console'), stdio: ['ignore', 'pipe', 'pipe'],
-});
-let out = '';
-const tokenReady = new Promise((res) => {
-  const onData = (c) => { out += String(c); const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(out); if (m) res(m[1]); };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-  setTimeout(() => res(null), 20000);
-});
+// THE USB GATE IS A FEATURE, AND THIS PROBE MUST NOT PAPER OVER IT. The console refuses to run
+// from a copy, and that is correct: a copy on a fixed disk behaves identically to the real
+// thing, and telling the two apart is the operator's whole problem. This probe runs a
+// DELIBERATE, ISOLATED copy, so it uses the console's own escape hatch — but it first proves
+// the gate is actually CLOSED, so that --allow-fixed-disk is a known override of a
+// known-working gate rather than a flag hiding a gate that quietly stopped working.
+//
+// Until 2026-10-12 this probe had never been run. It spawned the copy WITHOUT the flag, the
+// console refused, no token was ever printed, and the probe reported "the console never printed
+// a token" after its full timeout: a message naming the symptom while hiding the cause.
+function launch(args, timeoutMs) {
+  const c = spawn(process.execPath, [join(WORK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser', ...args], {
+    cwd: join(WORK, 'console'), stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let text = '';
+  const tokenReady = new Promise((res) => {
+    const onData = (d) => { text += String(d); const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(text); if (m) res(m[1]); };
+    c.stdout.on('data', onData);
+    c.stderr.on('data', onData);
+    // A refusing console EXITS. Waiting the full timeout for a process that is already gone
+    // turns a clear refusal into twenty seconds of silence.
+    c.on('exit', () => res(null));
+    setTimeout(() => res(null), timeoutMs);
+  });
+  return { child: c, tokenReady, output: () => text };
+}
+
+const gate = launch([], 8000);
+const gateToken = await gate.tokenReady;
+check(!gateToken, 'the console REFUSES to run from a copy when it is not told otherwise');
+check(
+  /allow-fixed-disk/.test(gate.output()),
+  'the refusal names the override, so an operator can act on it',
+  gate.output().split('\n').filter((l) => l.includes('allow-fixed-disk')).join(' ').trim().slice(0, 110),
+);
+try { gate.child.kill(); } catch { /* already exited */ }
+await new Promise((r) => setTimeout(r, 500)); // let the port go before binding it again
+
+const CONSOLE = launch(['--allow-fixed-disk'], 20000);
+const child = CONSOLE.child;
 
 let exitCode = 0;
 try {
-  const TOKEN = await tokenReady;
-  if (!TOKEN) throw new Error('the console never printed a token: ' + out.slice(-400));
+  const TOKEN = await CONSOLE.tokenReady;
+  if (!TOKEN) throw new Error('the console never printed a token: ' + CONSOLE.output().slice(-400));
   const BASE = `http://127.0.0.1:${PORT}`;
   const call = async (path, init) => {
     const sep = path.includes('?') ? '&' : '?';
@@ -96,20 +126,52 @@ try {
   const refusedAgent = generateIdentity();
   const pendingAgent = generateIdentity();
 
+  // THE CHALLENGE IS SOLVED, NOT STUBBED. This probe used to answer every item with '-' and to
+  // note that "`decide` requires only that the challenge was answered at all". That was true until
+  // the score was enforced in the shared seam (src/admission.mjs, added after a probe MEASURED a
+  // 0/20 applicant being granted). Once it was, this probe's enrolment silently stopped reaching
+  // 'decided', and every seam check below failed with not_decided: a message naming the symptom
+  // while hiding the cause. Solving is also the better test — it is what a real agent does, and a
+  // probe that fakes a pass proves nothing about the gate it is probing.
+  const strip = (s) => String(s).trim().replace(/\.$/, '').replace(/^An? /, '');
+  function solveItem(item, chains) {
+    const p = /^An? (.+?) is an? (.+?)\.?$/.exec(String(item.premise).trim());
+    const h = /^An? (.+?) is an? (.+?)\.?$/.exec(String(item.hypothesis).trim());
+    if (!p || !h) throw new Error('unparsed challenge item: ' + item.premise + ' / ' + item.hypothesis);
+    const entity = strip(p[1]);
+    const category = strip(h[2]);
+    return chains.some((c) => { const i = c.indexOf(entity); return i >= 0 && c.indexOf(category) > i; })
+      ? 'ENTAILED' : 'CONTRADICTED';
+  }
+
   async function enrol(joinKey, who, { bind = true, interview = true, decide = null } = {}) {
     const s = await call('/api/admissions/start', {
       method: 'POST', body: JSON.stringify({ joinKey, agentId: who.agentId }),
     });
     if (!s.body.id) throw new Error(`start failed for ${joinKey}: ${JSON.stringify(s.body)}`);
     const id = s.body.id;
-    // The challenge is answered with a deliberately blank stub. This probe is about the
-    // admission -> permit seam, NOT about the test, and `decide` requires only that the challenge
-    // was answered at all — so the record honestly carries a FAILED verdict and still exercises
-    // every refusal arm below. Scoring is never faked to make a probe look better.
-    const count = Number(s.body.challenge?.count) || 0;
-    await call('/api/admissions/answer', {
-      method: 'POST', body: JSON.stringify({ id, answers: Array.from({ length: count }, () => '-') }),
+
+    // The published challenge must carry its own taxonomy, or the gate is UNPASSABLE rather than
+    // failed — a distinction that matters, because an unpassable gate rejects every honest agent.
+    const chains = s.body.challenge?.kb?.chains;
+    const items = s.body.challenge?.items;
+    if (!Array.isArray(chains) || chains.length === 0) {
+      throw new Error(`the challenge carried no taxonomy: ${JSON.stringify(s.body.challenge).slice(0, 200)}`);
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error(`the challenge carried no items: ${JSON.stringify(s.body.challenge).slice(0, 200)}`);
+    }
+    const answers = items.map((it) => solveItem(it, chains));
+
+    const a = await call('/api/admissions/answer', {
+      method: 'POST', body: JSON.stringify({ id, answers }),
     });
+    // A PREREQUISITE'S RESULT MUST NEVER BE DISCARDED. When this one fails, every seam check
+    // below reports a failure about the seam, and not one of them names the cause.
+    const verdict = a.body?.verdict ?? {};
+    check(verdict.ok === true, `enrolment: ${joinKey} PASSED the mechanical challenge`,
+      `HTTP ${a.status} verdict=${JSON.stringify(verdict).slice(0, 120)}`);
+
     if (bind) {
       await call('/api/admissions/bind', {
         method: 'POST',
@@ -126,7 +188,11 @@ try {
         }),
       });
     }
-    if (decide) await call('/api/admissions/decide', { method: 'POST', body: JSON.stringify({ id, decision: decide }) });
+    if (decide) {
+      const d = await call('/api/admissions/decide', { method: 'POST', body: JSON.stringify({ id, decision: decide }) });
+      check(d.status === 200, `enrolment: decide "${decide}" for ${joinKey} succeeded`,
+        `HTTP ${d.status} ${JSON.stringify(d.body).slice(0, 140)}`);
+    }
     return id;
   }
 

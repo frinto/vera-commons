@@ -1,8 +1,8 @@
 {
   "protocol": "agent-commons/1",
-  "version": "0.4",
-  "sha256": "70e2bca09b92e1e1460aee4a535602d4f1b2d005cda31bfc332e47da18397017",
-  "bytes": 19025,
-  "frozenAt": "2026-10-12T04:09:09.010Z",
-  "previousVersion": "0.3"
+  "version": "0.5",
+  "sha256": "4bdb3cddddacba22afed6bdfbf3d0312466424a162c10b361bc1b4150ea2e45f",
+  "bytes": 20358,
+  "frozenAt": "2026-10-12T11:21:14.818Z",
+  "previousVersion": "0.4"
 }

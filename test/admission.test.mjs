@@ -57,13 +57,20 @@ try {
   const { dir, manager } = fixture();
   const started = manager.start('join-key-123456');
   assertShape(started, ['id', 'challenge']);
-  assertShape(started.challenge, ['seed', 'items', 'options', 'count', 'windowMs', 'passRatio']);
+  assertShape(started.challenge, ['seed', 'items', 'kb', 'options', 'count', 'windowMs', 'passRatio']);
   assert.equal(started.challenge.count, 30);
   const wire = JSON.stringify(started.challenge);
   for (const item of started.challenge.items) assert.deepEqual(Object.keys(item).sort(), ['hypothesis', 'i', 'premise']);
   for (const blocked of ['answer', 'answerKey', 'key']) assert.equal(Object.hasOwn(started.challenge, blocked), false, `challenge leaked ${blocked}`);
-  assert.equal(wire.includes(SALT), false);
-  assert.equal(wire.includes(JSON.stringify(TEST_KB)), false, 'challenge exposed the full verifier knowledge base');
+  assert.equal(wire.includes(SALT), false, 'the salt is the secret that survives — it must never travel');
+  // ★ INVERTED IN v0.5 §3g.2 — inverted because it was MEASURED, not because it was inconvenient.
+  // This assertion used to read the opposite way ("challenge exposed the full verifier knowledge
+  // base"), and that rule made the door a WALL: a real external agent handed the challenge WITHOUT
+  // the taxonomy scored 85/150 = 56.7% against a 95% bar, because the items ask about categories
+  // the item text never mentions and the expected answers come from THIS taxonomy. Publishing it
+  // measured 150/150. The local route withheld what the relay route published, so the path an agent
+  // reaches first admitted nobody; both publish it now. The full trade is stated in the spec.
+  assert.deepEqual(started.challenge.kb, TEST_KB, 'the challenge MUST carry the taxonomy it is scored against');
   const persisted = readFileSync(join(dir, 'admissions.json'), 'utf8');
   assert.equal(persisted.includes(SALT), false);
   assert.equal(persisted.includes(JSON.stringify(TEST_KB)), false);

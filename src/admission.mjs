@@ -231,12 +231,22 @@ export function createAdmissionManager({
       interview: null,
     });
     writeStore(store);
-    // Deliberately whitelist the public challenge fields. Never expose salt or answer material.
+    // Deliberately whitelist the public challenge fields. Never expose the salt or answer material.
+    //
+    // `kb` IS published, as of spec v0.5 §3g.2, and that is a measured decision rather than an
+    // oversight. Withholding it scored a real external agent 85/150 = 56.7% against a 95% bar, for
+    // a reason that cannot be argued away: the items ask about categories the item text never
+    // mentions, and the expected answers come from THIS taxonomy. This route used to withhold it
+    // while the relay route published it, which made the local door a wall that admitted nobody —
+    // the same defect Trial 1 measured, left standing on the path an agent reaches first.
+    // The `salt` stays hidden, and it is what stops a client precomputing an answer for a seed it
+    // was never issued.
     return {
       id,
       challenge: {
         seed: challenge.seed,
         items: challenge.items,
+        kb,
         options: challenge.options,
         count: challenge.count,
         windowMs: challenge.windowMs,

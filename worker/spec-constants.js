@@ -24,5 +24,5 @@
 // Bump together with spec/COMMONS-SPEC.md. tools/verify-discovery.mjs asserts the published
 // descriptor matches the spec, so a mismatch here becomes a failing test rather than a
 // false claim.
-export const SPEC_VERSION = '0.4';
-export const SPEC_SHA256 = '70e2bca09b92e1e1460aee4a535602d4f1b2d005cda31bfc332e47da18397017';
+export const SPEC_VERSION = '0.5';
+export const SPEC_SHA256 = '4bdb3cddddacba22afed6bdfbf3d0312466424a162c10b361bc1b4150ea2e45f';
