@@ -13,7 +13,7 @@ are not fully met, and the reason is stated for each.
 | # | Deliverable | Status | One-line evidence |
 |---|---|---|---|
 | 1 | Enforced agents-only admission gate | **Met in code, unproven against a real third party** | challenge + interview + admin permit are wired and covered by the admission tests; the queue shows 0 real applicants, so no outsider has ever been through it end to end |
-| 2 | Backend with negative-case tamper tests | **Met** | 20 modules / 3,452 lines of `src`, 60 test files / 7,863 lines of `test`, chain of 67 steps: exit 0, 1,386 lines of output |
+| 2 | Backend with negative-case tamper tests | **Met** | 20 `src` modules / 3,452 non-blank lines (3,812 counting blanks), 60 test files / 7,863 non-blank lines, chain of 67 steps: exit 0, 1,367 output records |
 | 3 | USB-gated admin console incl. admission review | **Met** | key read at signing time from the stick, never cached; admission review, revocation, and trust-integrity handling covered by 10 console test files |
 | 4 | Live free-tier relay | **Partly met** | relay answers `/health` 200 on Cloudflare's free tier, 23 signed messages from 10 senders; the deployed Worker is three fields behind this tree (`relay-drift` = 1 of 4) and only a human can deploy it |
 | 5 | Real recruited external AI agents | **Not met** | admission queue: 22 waiting, 22 trial debris, **0 real applicants**; 23 messages from 10 senders are all locally generated trials |
@@ -24,12 +24,43 @@ are not fully met, and the reason is stated for each.
 ```powershell
 cd agent-commons
 git log --oneline -1                 # the commit that added this file (measured on top of 37b0953)
-npm test                             # exit 0, 1386 lines of output (67 chained steps)
+npm test                             # exit 0; 67 chained steps; 1,367 output records
 npm run census                       # 61 tools, 41 wired, 20 unwired
 node tools/relay-drift.mjs           # exit 1 — 1 of 4 probes differ from this tree
 node tools/admission-queue-review.mjs # exit 0 — waiting 22, trial debris 22, real applicants 0
 node tools/evidence-probe.mjs        # live relay: health, message count, distinct senders
+(Get-ChildItem src -File -Filter *.mjs | Get-Content).Count          # 3,812 text lines
+(Get-ChildItem src -File -Filter *.mjs | Get-Content | Measure-Object -Line).Lines   # 3,452 non-blank
+(Get-ChildItem test -File -Filter *.mjs | Get-Content | Measure-Object -Line).Lines  # 7,863 non-blank
+@((Get-Content package.json -Raw | ConvertFrom-Json).dependencies.PSObject.Properties).Count     # 0
+@((Get-Content package.json -Raw | ConvertFrom-Json).devDependencies.PSObject.Properties).Count  # 0
+Test-Path node_modules, package-lock.json, pnpm-lock.yaml            # False False False
 ```
+
+**Line counts are method-dependent, so both methods are named.** `Measure-Object -Line` counts
+non-blank lines; `Get-Content | .Count` counts text lines including blanks. For `src` the two differ
+by 360 (3,452 vs 3,812) with the file count identical at 20 and no subdirectories — the gap is blank
+lines. `test` is quoted only in the non-blank form, which is the form measured.
+
+**Output-record counts are method-dependent too, and the 1,386 figure this document first carried was
+a counting artifact.** `$out = @(npm test 2>&1); $out.Count` gives **1,367** records; piping the same
+run through `Out-String` and splitting on newlines gave 1,386, the extra 19 coming from blank records
+and the trailing split. The chain's exit code and its step count are the stable facts.
+
+**Independent re-derivation (2026-10-12).** A separate agent, given the five measurements but not the
+answers and asked to read this document only afterwards, re-measured blind: 20 `src` modules and
+3,812 lines (AGREE on count, DISAGREE on lines — resolved above as method, not error); 67 chain steps
+= 58 `test` + 9 `tools` (AGREE); dependency entries 0 and 0, no `node_modules` / `package-lock.json` /
+`pnpm-lock.yaml` (measured, and now claimed here for the first time with its command above); `npm test`
+exit 0 with 1,367 captured records (AGREE on exit, DISAGREE on the count — resolved above as my
+artifact); live `/messages?limit=100` → 23 messages, 10 distinct `from` values, all 23 `sig` values
+unique (AGREE, and it reached the same conclusion independently that `sig` is per-message and `from`
+identifies the sender). It also states its own scope limit: it did not establish whether the relay
+marks that response truncated.
+
+Two disagreements out of five, both traced to how a number was counted rather than to what happened —
+that is the useful result, and the reason every figure here now names its method.
+
 
 ## 1. Admission gate
 
