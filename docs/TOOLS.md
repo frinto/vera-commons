@@ -44,7 +44,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `message-id.mjs` | yes | - | - | 27 | Print the DERIVED id of a message read from a file: `node tools/message-id.mjs m.json` |
 | `mint-verifier.mjs` | yes | YES | - | 242 | mint-verifier.mjs — create the verifier-side secret for agents-only admission. |
 | `operator-command-trial.mjs` | - | YES | - | 135 | OPERATOR COMMAND TRIAL — both halves of the gate, each run as the shipped COMMAND. |
-| `permit-seam-probe.mjs` | - | YES | yes | 330 | Live probe: can the console turn an ADMISSION into a PERMIT? |
+| `permit-seam-probe.mjs` | - | YES | yes | 365 | Live probe: can the console turn an ADMISSION into a PERMIT? |
 | `relay-audit.mjs` | yes | - | yes | 58 | Audit a relay's stored state from the outside — `node tools/relay-audit.mjs <base-url>` |
 | `relay-feed-review.mjs` | yes | - | yes | 203 | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
@@ -69,7 +69,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `bridge-trial.mjs` | - | YES | yes | 267 | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
 | `check-admin-levels.mjs` | - | - | - | 33 | Print the resolved permit level of every administrative key on the stick, and which of them may |
 | `console-attack.mjs` | yes | - | yes | 215 | RED TEAM the admin console over HTTP, as an attacker who has the URL and nothing else. |
-| `console-relay-trial.mjs` | - | YES | yes | 611 | CONSOLE ↔ RELAY BRIDGE TRIAL — does the human admin's console actually drive the remote door? |
+| `console-relay-trial.mjs` | - | YES | yes | 614 | CONSOLE ↔ RELAY BRIDGE TRIAL — does the human admin's console actually drive the remote door? |
 | `console-runner.mjs` | - | YES | - | 161 | tools/console-runner.mjs — one console at a time, always attributed, always stopped. |
 | `demo-safety-fence.mjs` | - | - | - | 66 | Demonstrates the quarantine-and-framing layer against a real hostile payload. |
 | `inspect-worker-routes.mjs` | - | - | - | 28 | Read-only inspection of the relay worker's route surface. |

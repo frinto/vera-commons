@@ -15,8 +15,9 @@
 import { mkdtempSync, rmSync, mkdirSync, cpSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { startConsole, stopAndVerify } from './console-runner.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STICK = process.env.AC_STICK || 'E:\\';
@@ -63,6 +64,26 @@ const verifier = JSON.parse(readFileSync(join(STICK, 'verifier.json'), 'utf8'));
 verifier.dir = 'data/admissions';            // relative to the TEMP root, not the stick
 writeFileSync(join(WORK, 'verifier.json'), JSON.stringify(verifier, null, 2));
 
+// THE COPY MUST BE FAITHFUL, and the run must SAY which tree it is a copy OF. A probe that asserts
+// against a tree which silently differs from the one it names makes every check below a statement
+// about an unnamed artifact.
+const hashOf = (p) => (existsSync(p) ? createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 12) : '(missing)');
+check(hashOf(join(WORK, 'console', 'app.mjs')) === hashOf(join(SRC_CONSOLE, 'app.mjs')),
+  'the console under test is byte-identical to its named source', hashOf(join(WORK, 'console', 'app.mjs')));
+check(hashOf(join(WORK, 'console', 'src', 'admission.mjs')) === hashOf(join(SRC_SRC, 'admission.mjs')),
+  'and so is the admission library it imports', hashOf(join(WORK, 'console', 'src', 'admission.mjs')));
+
+// DRIFT, named rather than assumed. Testing the source tree while the DEPLOYED bytes are older is
+// exactly how a green run here once coexisted with a door that admitted nobody, so the seam files are
+// compared by hash and the difference is printed on the run itself. AC_FROM_STICK=1 tests the
+// deployed bytes instead of the working copy.
+const drift = ['console/app.mjs', 'src/admission.mjs', 'src/permit.mjs']
+  .map((rel) => ({ rel, repo: hashOf(join(ROOT, rel)), stick: hashOf(join(STICK, rel)) }))
+  .filter((d) => d.repo !== d.stick);
+console.log(drift.length
+  ? `  (DRIFT: the deployment differs from the source tree -- ${drift.map((d) => `${d.rel} repo=${d.repo} stick=${d.stick}`).join('; ')}. This run tests the ${FROM_STICK ? 'DEPLOYED' : 'SOURCE'} tree.)`
+  : '  (drift check: console/app.mjs, src/admission.mjs and src/permit.mjs match between the source tree and the deployment)');
+
 // THE USB GATE IS A FEATURE, AND THIS PROBE MUST NOT PAPER OVER IT. The console refuses to run
 // from a copy, and that is correct: a copy on a fixed disk behaves identically to the real
 // thing, and telling the two apart is the operator's whole problem. This probe runs a
@@ -73,41 +94,47 @@ writeFileSync(join(WORK, 'verifier.json'), JSON.stringify(verifier, null, 2));
 // Until 2026-10-12 this probe had never been run. It spawned the copy WITHOUT the flag, the
 // console refused, no token was ever printed, and the probe reported "the console never printed
 // a token" after its full timeout: a message naming the symptom while hiding the cause.
-function launch(args, timeoutMs) {
-  const c = spawn(process.execPath, [join(WORK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser', ...args], {
-    cwd: join(WORK, 'console'), stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let text = '';
-  const tokenReady = new Promise((res) => {
-    const onData = (d) => { text += String(d); const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(text); if (m) res(m[1]); };
-    c.stdout.on('data', onData);
-    c.stderr.on('data', onData);
-    // A refusing console EXITS. Waiting the full timeout for a process that is already gone
-    // turns a clear refusal into twenty seconds of silence.
-    c.on('exit', () => res(null));
-    setTimeout(() => res(null), timeoutMs);
-  });
-  return { child: c, tokenReady, output: () => text };
+// BOTH arms of this probe now start the console THROUGH THE RUNNER, and that matters most for the arm
+// that is expected to FAIL. A bare spawn that "did not print a token" is consistent with two very
+// different worlds: the gate refused (good), or something else already owned the port (bad). The
+// runner refuses a served port BY NAME, so the gate arm's refusal is unambiguous, and it proves the
+// port is free again before the real console is allowed to take it.
+const startCopy = (args, readyTimeoutMs) => startConsole({
+  app: join(WORK, 'console', 'app.mjs'), port: PORT, args, cwd: join(WORK, 'console'),
+  tool: 'permit-seam-probe.mjs', readyTimeoutMs,
+});
+
+let gateRefusal = '';
+try {
+  const leaked = await startCopy([], 8000);
+  // Unreachable while the gate works. Report it as the failure it is, and stop the copy rather than
+  // leaving a console running out of a temp directory for the next run to trip over.
+  gateRefusal = '(the console STARTED without --allow-fixed-disk: the USB gate is OPEN)';
+  try { await stopAndVerify(leaked); } catch { /* reported below regardless */ }
+} catch (e) {
+  gateRefusal = e && e.message ? e.message : String(e);
 }
-
-const gate = launch([], 8000);
-const gateToken = await gate.tokenReady;
-check(!gateToken, 'the console REFUSES to run from a copy when it is not told otherwise');
+// The first check must DISCRIMINATE, not merely observe that something went wrong: 'no token' is the
+// signature of a console that refused to start, while a port refusal means the arm never got as far
+// as the gate — and a thrown ReferenceError would satisfy a lazy "there was an error" test too. This
+// is the shape of the two runner refusals, told apart.
+check(/never printed a token/.test(gateRefusal) && !/Refusing to start/.test(gateRefusal),
+  'the console REFUSES to run from a copy when it is not told otherwise',
+  gateRefusal.split('\n')[0].slice(0, 120));
 check(
-  /allow-fixed-disk/.test(gate.output()),
+  /allow-fixed-disk/.test(gateRefusal),
   'the refusal names the override, so an operator can act on it',
-  gate.output().split('\n').filter((l) => l.includes('allow-fixed-disk')).join(' ').trim().slice(0, 110),
+  gateRefusal.split('\n').filter((l) => l.includes('allow-fixed-disk')).join(' ').trim().slice(0, 110),
 );
-try { gate.child.kill(); } catch { /* already exited */ }
-await new Promise((r) => setTimeout(r, 500)); // let the port go before binding it again
 
-const CONSOLE = launch(['--allow-fixed-disk'], 20000);
-const child = CONSOLE.child;
-
+let live = null;
 let exitCode = 0;
 try {
-  const TOKEN = await CONSOLE.tokenReady;
-  if (!TOKEN) throw new Error('the console never printed a token: ' + CONSOLE.output().slice(-400));
+  live = await startConsole({
+    app: join(WORK, 'console', 'app.mjs'), port: PORT, args: ['--allow-fixed-disk'],
+    cwd: join(WORK, 'console'), tool: 'permit-seam-probe.mjs', readyTimeoutMs: 20000,
+  });
+  const TOKEN = live.token;
   const BASE = `http://127.0.0.1:${PORT}`;
   const call = async (path, init) => {
     const sep = path.includes('?') ? '&' : '?';
@@ -320,8 +347,16 @@ try {
   console.error('  FAIL probe aborted:', err.message);
   exitCode = 1;
 } finally {
-  child.kill();
-  await new Promise((r) => setTimeout(r, 250));
+  // The release proof is a CHECK, and it lands before the summary line below: a run whose stop check
+  // failed must not be able to print a green total.
+  if (live) {
+    try {
+      await stopAndVerify(live);
+      check(true, `the console was stopped and port ${PORT} is free again`);
+    } catch (e) {
+      check(false, `the console was stopped and port ${PORT} is free again`, e && e.message ? e.message : String(e));
+    }
+  }
   try { rmSync(WORK, { recursive: true, force: true }); } catch { /* temp dir; leftovers are harmless */ }
 }
 
