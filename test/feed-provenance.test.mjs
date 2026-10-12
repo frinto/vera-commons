@@ -54,3 +54,33 @@ test('feed provenance separates held keys from unheld ones, and its control can 
   assert.notEqual(broken.code, 0, 'a missing control must void the run instead of reporting UNKNOWNs');
   assert.match(broken.out, /INSTRUMENT BROKEN/);
 });
+
+test('a saved error body is not a feed, and must never be reported as zero senders', () => {
+  const BASE = mkdtempSync(join(tmpdir(), 'ac-prov-err-'));
+  const keys = join(BASE, 'keys');
+  mkdirSync(keys);
+  writeFileSync(join(keys, 'identity.json'), JSON.stringify({ publicKey: KNOWN }));
+
+  // Exactly what `curl -o feed.json .../messages` writes when the operator secret is missing: an
+  // HTTP 401 whose body is JSON. It parses perfectly, and `messages ?? []` turns it into
+  // "senders: 0" -- a clean relay reported from a file that was never a feed.
+  const saved = join(BASE, 'saved-401.json');
+  writeFileSync(saved, JSON.stringify({ ok: false, reason: 'operator_only' }));
+
+  const r = run([saved, '--search', keys, '--control', KNOWN]);
+  assert.notEqual(r.code, 0, `a saved 401 body must not produce a report:\n${r.out}`);
+  // Assert on the REPORT SHAPE, not on the bare words "senders: 0": the tool's own diagnostic quotes
+  // that phrase to explain the rule, and this helper merges stdout with stderr, so a literal match
+  // would fail on the very message that documents the fix.
+  assert.doesNotMatch(r.out, /senders: \d+\s+local: \d+\s+unknown: \d+/, 'a report line from a non-feed would clear the relay');
+  assert.match(r.out, /not a feed response/, 'the failure must name what is wrong');
+  assert.match(r.out, /operator_only/, 'the reason inside the saved body is the diagnosis the operator needs');
+  assert.doesNotMatch(r.out, /INSTRUMENT BROKEN/, 'this is a bad input, not a broken instrument');
+
+  // The legitimate empty feed must still report, so the guard cannot pass by refusing everything.
+  const empty = join(BASE, 'empty.json');
+  writeFileSync(empty, JSON.stringify({ ok: true, messages: [] }));
+  const e = run([empty, '--search', keys, '--control', KNOWN]);
+  assert.equal(e.code, 0, `an empty but REAL feed must still report:\n${e.out}`);
+  assert.match(e.out, /senders: 0\s+local: 0\s+unknown: 0/);
+});

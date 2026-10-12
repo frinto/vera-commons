@@ -37,7 +37,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | `cost-model.mjs` | yes | - | yes | 308 | package.json | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
 | `deploy-stick.mjs` | yes | YES | yes | 488 | spawned | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
 | `embed-spec.mjs` | yes | YES | - | 123 | package.json | embed-spec.mjs — put the frozen specification on the wire, byte for byte. |
-| `feed-provenance.mjs` | yes | - | - | 142 | package.json | tools/feed-provenance.mjs — WHO is behind the keys in a relay feed? |
+| `feed-provenance.mjs` | yes | - | - | 160 | package.json | tools/feed-provenance.mjs — WHO is behind the keys in a relay feed? |
 | `join-apply.mjs` | yes | YES | yes | 314 | spawned | JOIN-APPLY — the JOINER's half of the Agent Commons admission gate, over the public relay. |
 | `join-bind.mjs` | yes | YES | yes | 103 | spawned | Join the commons as a NAMED key: bind an admission to an ed25519 identity, then submit the |
 | `join-doc-drift.test.mjs` | yes | - | yes | 211 | package.json | THE FRONT DOOR MUST BE WALKABLE FROM OUTSIDE. |

@@ -61,7 +61,25 @@ try {
   console.error(`cannot read the feed response: ${err?.message || err}`);
   process.exit(1);
 }
-const messages = feed?.messages ?? [];
+// A JSON file is not automatically a feed. A saved 401 body ({"ok":false,"reason":"operator_only"})
+// or any JSON without a messages array parses perfectly and would be analyzed as "senders: 0" -- a
+// clean relay reported from a file that was never a feed. This tool already refuses to guess when its
+// own instrument is broken (--control); a response that is not a feed belongs in that same class.
+if (!Array.isArray(feed?.messages)) {
+  const shape = feed && typeof feed === 'object'
+    ? ('messages' in feed
+      ? `messages is ${JSON.stringify(feed.messages)?.slice(0, 40) ?? String(feed.messages)}`
+      : `no messages field (top-level keys: ${Object.keys(feed).join(',') || 'none'})`)
+    : `the file holds ${JSON.stringify(feed)?.slice(0, 40) ?? String(feed)}`;
+  console.error(`${feedPath} is not a feed response: ${shape}`);
+  if (feed && typeof feed === 'object' && feed.ok === false) {
+    console.error(`  the body says ok:false reason:${feed.reason ?? '(none)'} -- that is a saved ERROR response; a 401 without the operator secret looks exactly like this.`);
+  }
+  console.error('  Reporting "senders: 0" from this file would clear the relay on the strength of a read');
+  console.error('  that never happened. Fetch the feed again, with the operator secret.');
+  process.exit(1);
+}
+const messages = feed.messages;
 const senders = [...new Set(messages.map((m) => m?.from).filter((x) => typeof x === 'string'))];
 
 // The feed under test is never evidence about itself.
