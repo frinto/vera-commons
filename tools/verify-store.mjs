@@ -38,8 +38,35 @@ const arg = (name, dflt) => {
 const STORE = arg('store', join(STICK, 'data', 'admissions', 'admissions.json'));
 
 if (!existsSync(STORE)) { console.error(`no admissions store at ${STORE}`); process.exit(2); }
-const raw = JSON.parse(readFileSync(STORE, 'utf8'));
-const rows = Array.isArray(raw) ? raw : (raw.admissions ?? []);
+let raw;
+try {
+  raw = JSON.parse(readFileSync(STORE, 'utf8'));
+} catch (err) {
+  console.error(`${STORE} is not valid JSON: ${err?.message || err}`);
+  console.error('  A truncated or half-written store cannot be verified -- and it must not be reported as');
+  console.error('  an empty one either. This tool prints a clean bill of health, and one over a file that');
+  console.error('  could not be read is worse than no check at all.');
+  process.exit(2);
+}
+// The store has ONE shape: an object with an admissions array (a bare array is tolerated because an
+// older export wrote that). `?? []` here turned any other JSON -- {}, {"admissions":null}, a relay or
+// error response saved by mistake -- into "verifying 0 record(s)" and then the OK banner with exit 0:
+// a tamper check blessing a file it never read. A wrong shape and an empty store are both "nothing
+// was verified", so both fail.
+if (!Array.isArray(raw) && !Array.isArray(raw?.admissions)) {
+  const what = raw === null || typeof raw !== 'object'
+    ? JSON.stringify(raw)?.slice(0, 40) ?? String(raw)
+    : `top-level keys: ${Object.keys(raw).join(',') || 'none'}`;
+  console.error(`${STORE} is not an admissions store (${what}).`);
+  console.error('  Expected { "admissions": [ ... ] }. Nothing was verified, so this is a failure, not a pass.');
+  process.exit(2);
+}
+const rows = Array.isArray(raw) ? raw : raw.admissions;
+if (rows.length === 0) {
+  console.error(`${STORE} is shape-valid but holds 0 records: nothing was verified.`);
+  console.error('  If records were expected here, this is the wrong file; either way there is no evidence to report.');
+  process.exit(2);
+}
 
 const heldToAccount = (r) => r.status === 'decided';
 

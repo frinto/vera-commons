@@ -36,6 +36,50 @@ test('verify-store passes --store THROUGH to every child it spawns', () => {
     'verify-store no longer runs each record in its own process');
 });
 
+test('a file that is not this store is not a passing store', () => {
+  // The shape that matters: any JSON that is not this store's shape -- {}, {"admissions": null}, a
+  // relay or error response saved by mistake -- rendered as "verifying 0 record(s)" followed by the OK
+  // banner and exit 0. A tamper check that blesses a file it could not read is worse than no check at
+  // all, because it produces the reassuring sentence this whole tool exists to be able to print.
+  const TOOL = join(ROOT, 'tools', 'verify-store.mjs');
+  const run = (file) => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath, [TOOL, '--store', file], { encoding: 'utf8', cwd: ROOT }) };
+    } catch (err) {
+      return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+    }
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'ac-vstore-shape-'));
+  try {
+    const cases = [
+      ['empty-object', 'an empty object', {}],
+      ['null-field', 'a null admissions field', { admissions: null }],
+      ['relay-response', 'a saved relay response', { ok: false, reason: 'operator_only' }],
+      ['no-records', 'a store that is shape-valid but holds no records', { admissions: [] }],
+    ];
+    for (const [slug, label, body] of cases) {
+      const f = join(dir, `${slug}.json`);
+      writeFileSync(f, JSON.stringify(body));
+      const r = run(f);
+      assert.notEqual(r.code, 0, `${label} must not pass:\n${r.out}`);
+      assert.doesNotMatch(r.out, /OK: every record/,
+        `${label} printed the clean banner -- this is the false pass:\n${r.out}`);
+      assert.doesNotMatch(r.out, /verifying 0 record\(s\)/,
+        `${label} was reported as an empty store rather than as a file that is not a store:\n${r.out}`);
+    }
+    // ...and it must still be able to say "not valid JSON" rather than dumping a parse stack trace.
+    const junk = join(dir, 'truncated.json');
+    writeFileSync(junk, '{"admissions": [{"id": "abc"');
+    const bad = run(junk);
+    assert.notEqual(bad.code, 0, 'truncated JSON must not pass');
+    assert.match(bad.out, /not valid JSON|is not valid/i, `a truncated store needs a diagnosis:\n${bad.out}`);
+    assert.doesNotMatch(bad.out, /at JSON\.parse|node:internal/,
+      `a truncated store must not dump a stack trace at the operator:\n${bad.out}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a decided record that cannot be re-derived is held to account; an expired one is not', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ac-vstore-'));
   try {
