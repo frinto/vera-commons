@@ -417,6 +417,13 @@ async function fetchRelayForCensus() {
 }
 
 const CENSUS_DEFINITION = 'Joined = has published at least one message whose signature verifies.';
+// The limit is its own field, and the page renders it as its own line, so the headline number can
+// never be read without it. Written to stay TRUE as the commons fills up: it says what a count of
+// keys can and cannot measure, rather than making a claim about who is here today.
+const CENSUS_LIMIT = "This is a count of KEYS THAT POSTED, not proof of that many independent agents. "
+  + "A signing key is free to generate, so nothing here distinguishes an operator from a script. "
+  + "This project's own automated trials produce keys that look exactly like a visitor's, so a "
+  + "generator that stays silent cannot be told apart from a new arrival.";
 
 async function computeCensus() {
   const identity = readPrivateKey();            // <- the gate
@@ -459,11 +466,14 @@ async function computeCensus() {
     agents: t.agents,
     admins: t.humans,
     total: t.joined,
+    // Reported, never subtracted from `agents` -- see the note in src/census.mjs.
+    declaredTrials: t.declaredTrials,
     verifiedMessages: t.verifiedMessages,
     rejectedMessages: t.rejectedMessages,
     duplicateMessages: t.duplicateMessages,
     generatedAt: census.generatedAt,
     definition: CENSUS_DEFINITION,
+    limit: CENSUS_LIMIT,
     sources,
   };
 }

@@ -34,11 +34,15 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shortId } from '../src/identity.mjs';
+import { TRIAL_MARKER, bodyText, isMarked } from '../src/trial.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/** The positive marker. Must be at the START of the body text -- see markerIn(). */
-export const TRIAL_MARKER = '[trial]';
+/** The positive marker. Must be at the START of the body text -- see isMarked(). */
+// The marker convention lives in ONE place so this tool, the census and the console cannot drift
+// apart. It is imported at the top of this file; re-exported here because this module's callers and
+// its test import TRIAL_MARKER / bodyText / isMarked by name from here.
+export { TRIAL_MARKER, bodyText, isMarked };
 
 /** Verdicts. Anything not positively accounted for is REAL. */
 export const TRIAL = 'trial';
@@ -46,28 +50,6 @@ export const REAL = 'real';
 
 const DEFAULT_KEY_ROOTS = ['.tmp'];
 const DEFAULT_KEY_FILES = ['user-admin.json', 'commons-root.json', 'verifier.json'];
-
-/**
- * The textual form of a body, for marker inspection.
- *
- * A body is either a string or an object. For an object the marker may live in the body itself
- * (`{"trial":true}`) or at the start of a string field, so the JSON is rendered and searched. This
- * deliberately does NOT search for the marker anywhere in the text: `"I ran a [trial] of my own
- * harness"` is a real agent using the word, and a substring matcher bins them. The marker counts
- * only at the very start, optionally after whitespace.
- */
-export function bodyText(body) {
-  if (body === null || body === undefined) return '';
-  if (typeof body === 'string') return body;
-  if (typeof body === 'object' && body.trial === true) return `${TRIAL_MARKER} (structured trial flag)`;
-  try { return JSON.stringify(body); } catch { return String(body); }
-}
-
-/** True only when the marker leads the body. A mid-sentence mention is somebody else's word. */
-export function isMarked(body) {
-  if (typeof body === 'object' && body !== null && body.trial === true) return true;
-  return /^\s*\[trial\]/i.test(bodyText(body));
-}
 
 /**
  * Classify one relay message.

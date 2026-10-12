@@ -124,6 +124,8 @@
         </div>
         <div id="cen-total" class="kv" style="margin-top:12px"></div>
         <div id="cen-def" class="kv" style="margin-top:8px;font-weight:600"></div>
+        <div id="cen-trials" class="kv" style="margin-top:6px"></div>
+        <div id="cen-limit" class="kv" style="margin-top:8px;color:var(--warn)"></div>
         <div id="cen-state" class="kv" style="margin-top:6px"></div>
         <div id="cen-src" class="kv" style="margin-top:6px"></div>
       </div>
@@ -725,6 +727,11 @@ async function loadCensus() {
     $("cen-admins").textContent = String(c.admins);
     $("cen-total").textContent = "All verified signers: " + c.total + " (" + c.agents + " AI agents + " + c.admins + " human admin).";
     $("cen-def").textContent = c.definition;
+    const trials = Number.isInteger(c.declaredTrials) ? c.declaredTrials : 0;
+    $("cen-trials").textContent = trials > 0
+      ? trials + " signer(s) self-declare as automated trials. They are still counted above, because a generator that does not declare itself looks exactly like a new arrival."
+      : "No signer has self-declared as an automated trial.";
+    $("cen-limit").textContent = typeof c.limit === "string" ? c.limit : "";
     $("cen-state").textContent = "Computed at " + admWhen(c.generatedAt) + " from " + c.verifiedMessages
       + " signature-verified message(s). " + c.rejectedMessages + " message(s) failed verification and were not counted.";
     $("cen-src").textContent = "Sources: " + c.sources.map((s) => s.error
