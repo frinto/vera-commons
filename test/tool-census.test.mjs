@@ -205,3 +205,19 @@ test('the trial registry counts as a caller -- the entry AND the call that consu
     'stranger-journey.mjs is entry one of the trial registry; reporting it unwired is the false '
     + '"nothing runs this" this census exists to prevent');
 });
+
+test('the census states HOW a tool is wired, because "imported" is a weaker claim than "spawned"', () => {
+  // A reader deciding whether a tool is reachable needs the channel, not just a boolean: a tool whose
+  // only caller IMPORTS it has its functions exercised while nothing runs its command-line path.
+  // These four rows are the worked examples of the four channels, pinned so the column cannot go vague.
+  const byName = Object.fromEntries(buildCensus().map(r => [r.name, r]));
+  assert.equal(byName['tool-census.mjs'].via, 'package.json', 'an npm script names it');
+  assert.equal(byName['verify-seed.mjs'].via, 'spawned', 'its test runs it as a child process');
+  assert.equal(byName['admission-queue-review.mjs'].via, 'imported',
+    'two tests import its functions and nothing runs it as a program -- the census must say so rather '
+    + 'than call it wired and leave the reader to guess');
+  assert.equal(byName['stranger-journey.mjs'].via, 'trial registry',
+    'no source file calls it; the registry runs it through a computed path');
+  assert.equal(byName['message-id.mjs'].via, null,
+    'an unwired tool has no channel to report -- null, not an empty string that reads like a value');
+});

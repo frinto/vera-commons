@@ -76,9 +76,18 @@ const isCommentLine = (l) => /^\s*(\/\/|#|\*|\/\*)/.test(l);
  * an invocation: counting bare mentions once made a tool look wired while nothing ran it.
  */
 export function wiresTool(text, name, file = 'inline.mjs') {
+  return wireChannel(text, name, file) !== null;
+}
+
+/**
+ * WHICH channel matched. Not cosmetic: an IMPORTED tool has its functions exercised by a test while
+ * nothing in the repository runs its command-line path -- a weaker claim than "something runs it", and
+ * the one a reader needs when deciding whether a tool is actually reachable.
+ */
+export function wireChannel(text, name, file = 'inline.mjs') {
   const kind = /\.(mjs|js|cjs|ts)$/i.test(file) ? 'code'
     : /\.(ps1|psm1|sh|cmd|bat)$/i.test(file) ? 'shell' : 'doc';
-  if (kind === 'doc') return false;
+  if (kind === 'doc') return null;
   const canSpawn = kind === 'code';
   const spawnish = (l) => (canSpawn && SPAWNER.test(l)) || INTERPRETER.test(l);
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -87,24 +96,25 @@ export function wiresTool(text, name, file = 'inline.mjs') {
   // as much as one that spawns it, and gating this on a spawn token silently UNWIRED two tools whose
   // tests import them (admission-queue-review.mjs, stick-scan.mjs) -- a false "nothing runs this"
   // introduced in the same edit that removed a false "something runs this".
-  if (!code.some(spawnish) && !code.some(l => IMPORT_OF_TOOLS.test(l))) return false;
+  if (!code.some(spawnish) && !code.some(l => IMPORT_OF_TOOLS.test(l))) return null;
   const quoted = new RegExp(`['"\`][^'"\`]*${escaped}`);
   for (let i = 0; i < code.length; i++) {
     const line = code[i];
     if (!line.includes(name)) continue;
-    if (spawnish(line) || IMPORT_OF_TOOLS.test(line)) return true;
+    if (spawnish(line)) return 'spawned';
+    if (IMPORT_OF_TOOLS.test(line)) return 'imported';
     if (!quoted.test(line)) continue;                      // a word in prose is not a path
     const lo = Math.max(0, i - WINDOW), hi = Math.min(code.length - 1, i + WINDOW);
     for (let j = lo; j <= hi; j++) {
-      if (j !== i && spawnish(code[j])) return true;
+      if (j !== i && spawnish(code[j])) return 'spawned';
     }
     const bind = line.match(/^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)/);
     if (bind) {
       const used = new RegExp(`\\b${bind[1]}\\b`);
-      if (canSpawn && code.some((l, j) => j !== i && SPAWNER.test(l) && used.test(l))) return true;
+      if (canSpawn && code.some((l, j) => j !== i && SPAWNER.test(l) && used.test(l))) return 'spawned';
     }
   }
-  return false;
+  return null;
 }
 
 /**
@@ -170,7 +180,8 @@ export function buildCensus() {
       // The shape rules live in wiresTool() so a test can drive them with synthetic inputs whose
       // answers are known. Every bug this detector has had was found that way. The path is passed so
       // the rule can tell a caller from a document.
-      if (wiresTool(body, name, p)) via = via ?? 'invoked';
+      const channel = wireChannel(body, name, p);
+      if (channel) via = via ?? channel;
     }
     if (inTrialRegistry(registrySrc, name)) via = via ?? 'trial registry';
     return {
@@ -189,9 +200,9 @@ export function buildCensus() {
 
 export function renderCensus(rows) {
   const table = (list) => [
-    '| tool | args | writes | net | lines | purpose |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...list.map(r => `| \`${r.name}\` | ${r.args ? 'yes' : '-'} | ${r.writes ? 'YES' : '-'} | ${r.net ? 'yes' : '-'} | ${r.lines} | ${r.purpose ?? '*(no header comment)*'} |`),
+    '| tool | args | writes | net | lines | wired via | purpose |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    ...list.map(r => `| \`${r.name}\` | ${r.args ? 'yes' : '-'} | ${r.writes ? 'YES' : '-'} | ${r.net ? 'yes' : '-'} | ${r.lines} | ${r.via ?? '-'} | ${r.purpose ?? '*(no header comment)*'} |`),
   ].join('\n');
 
   const wired = rows.filter(r => r.wired);
@@ -214,12 +225,14 @@ calls a write API somewhere; \`net\` means it calls \`fetch\` somewhere. A tool 
 harmless; a tool with no flags at all can still be wrong. This generator deliberately executes nothing,
 because several entries modify state.
 
-\`wired\` means something in this repository invokes it: named in \`package.json\`, imported, spawned from
-\`test/\` or another source file — the call may span several lines and the path may be held in a variable
-— or listed in the trial registry \`tools/trial-all.mjs\`, which runs each entry through a computed path.
-A mention inside a comment, in prose, or in a document does **not** count: counting mentions that way
-once made a tool look wired while nothing ran it, and a usage example in a note is a human's instruction,
-not an invocation.
+\`wired\` means something in this repository invokes it, and the \`wired via\` column says WHICH channel
+matched: \`package.json\` (an npm script names it), \`spawned\` (a source file runs it as a program — the
+call may span several lines and the path may be held in a variable), \`imported\` (a source file imports
+it as a module, so its functions run while nothing runs its command line), or \`trial registry\` (it is an
+entry in \`tools/trial-all.mjs\`, which runs each entry through a computed path). One row reports the first
+channel that matched, so the column is a reason to look rather than a proof. A mention inside a comment,
+in prose, or in a document does **not** count: counting mentions that way once made a tool look wired
+while nothing ran it, and a usage example in a note is a human's instruction, not an invocation.
 
 ## Wired (${wired.length}) — something invokes it
 
