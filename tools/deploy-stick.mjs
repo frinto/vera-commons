@@ -40,6 +40,11 @@
 //   3  PRECONDITION not met: the code deployed correctly, but this volume has no operator credentials
 //      yet, so the checks that need an unlocked console are NOT RUN rather than failed. The remedy is
 //      the key ceremony, not a code fix. See tools/stick-preconditions.mjs for why this is separate.
+//   4  a SECOND COPY of this project is on the stick: the deployment itself is fine, but a folder this
+//      tool never wrote carries its own app.mjs + src/, so a console started from it serves staler
+//      code and its own data. The remedy is a human ruling on that folder, not a re-deploy, which is
+//      exactly why it is not code 1. The rule is in tools/stick-scan.mjs; code 1 outranks code 4 and
+//      both are always reported. This tool never deletes a tree it did not create.
 //
 // TRYING IT WITHOUT A PHYSICAL STICK. The drive-root rule below is load-bearing (the console resolves
 // its own credentials from its own location), so a plain folder will not do — but a virtual drive will:
@@ -146,6 +151,12 @@ const sha = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
 let failures = 0;
 const ok = (m) => console.log('  PASS ' + m);
 const bad = (m) => { failures++; console.log('  FAIL ' + m); };
+// A second copy of the project gets its OWN verdict and its own exit code: the remedy is a human
+// ruling on a folder, not the re-deploy that code 1 tells the operator to run. Folding it into
+// `failures` would make the two situations indistinguishable at the exit code, which is the one
+// thing the operator acts on.
+let straysFound = 0;
+const stray = (m) => { straysFound++; console.log('  FAIL ' + m); };
 
 function copyTree(from, to) {
   // Guarded: mkdirSync on an existing DIRECTORY is a no-op, but on a Windows drive root it throws
@@ -293,6 +304,38 @@ for (const { p, secret } of LAYOUT) {
   else bad('MISSING: ' + relative(STICK, p) + '  (the console will not start without this)');
 }
 
+// --- 2c. a SECOND COPY of the project on the stick (read-only) ----------------------------------
+// Written because of a measured incident, not a hypothesis: a console process started from
+// E:\AgentCommons\ -- a stale second copy of this project left on the volume by an earlier layout --
+// held 127.0.0.1:7788 for 7h19m. On Windows two processes can hold ONE port, so a later trial could
+// have been answered by THAT build while every check in this tool reported the deployment healthy.
+// Everything above compares the files this tool DEPLOYS, which is precisely why a tree it never wrote
+// was invisible to it. The rule lives in tools/stick-scan.mjs and is narrow on purpose (it must not
+// cry wolf about the operator's own code); this section supplies the evidence and the verdict.
+const { findStrayCopies } = await import('./stick-scan.mjs');
+const DEPLOYED_TOP = ['console', 'src', 'tools', 'docs', 'spec', 'test', 'worker', 'data'];
+console.log('');
+console.log('--- no second copy of the project on the stick ---');
+for (const s of findStrayCopies(STICK, { deployedTop: DEPLOYED_TOP, skipDirs: [...SKIP_DIRS] })) {
+  const detail = s.marks.map((m) => {
+    const mine = join(STICK, ...m.split('/'));
+    const theirs = join(s.dir, ...m.split('/'));
+    const cmp = existsSync(mine) ? ' (' + sha(theirs).slice(0, 12) + ' here vs ' + sha(mine).slice(0, 12) + ' deployed)' : '';
+    return m + cmp;
+  }).join(', ');
+  stray('SECOND COPY of this project: ' + relative(STICK, s.dir) + '\\ carries ' + detail);
+}
+if (straysFound === 0) ok('nothing outside the deployed layout carries this project\'s shape');
+
+function reportStrays() {
+  console.log('');
+  console.log(straysFound + ' SECOND COPY of this project is on the stick. The deployed copy is fine, so this');
+  console.log('is NOT a re-deploy problem: a console started from that folder serves ITS OWN staler code and');
+  console.log('its own data, and on Windows two processes can hold one port.');
+  console.log('  Decide by hand whether to keep it. This tool never deletes a tree it did not create.');
+  console.log('  Nothing was written.');
+}
+
 // --- CHECK-ONLY STOPS HERE ----------------------------------------------------------------------
 // Everything below STARTS the deployed console, and starting it is not free of side effects: the
 // console creates its own data dir on the stick (DATA_DIR = <stick>/console/data). --check promised
@@ -303,7 +346,12 @@ if (CHECK_ONLY) {
   if (failures) {
     console.log(failures + ' check(s) FAILED — the stick has DRIFTED from the repo. Nothing was written.');
     console.log('Run the same command without --check to repair it.');
+    if (straysFound) console.log('ALSO reported above: ' + straysFound + ' second copy of this project (its own code 4).');
     process.exit(1);
+  }
+  if (straysFound) {
+    reportStrays();
+    process.exit(4);
   }
   console.log('CHECK OK: the stick matches the repo. Nothing was written.');
   process.exit(0);
@@ -428,6 +476,11 @@ if (exited !== null) {
 console.log('');
 if (failures) {
   console.log(failures + ' check(s) FAILED — the stick is NOT deployable as it stands.');
+  if (straysFound) console.log('ALSO reported above: ' + straysFound + ' second copy of this project (its own code 4).');
   process.exit(1);
+}
+if (straysFound) {
+  reportStrays();
+  process.exit(4);
 }
 console.log('All checks passed: the stick copy is deployed AND it runs.');

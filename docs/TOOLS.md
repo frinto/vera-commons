@@ -19,7 +19,7 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (36) — something invokes it
+## Wired (37) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `challenge-issue.mjs` | yes | YES | - | 110 | Issue ONE admission challenge to a joining key, as a separate process, and write out the file |
 | `challenge-score.mjs` | yes | - | - | 119 | Score a joining agent's answers, and report the two things separately, because conflating them |
 | `cost-model.mjs` | yes | - | yes | 308 | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
-| `deploy-stick.mjs` | yes | YES | yes | 434 | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
+| `deploy-stick.mjs` | yes | YES | yes | 487 | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
 | `embed-spec.mjs` | yes | YES | - | 123 | embed-spec.mjs — put the frozen specification on the wire, byte for byte. |
 | `feed-provenance.mjs` | yes | - | - | 142 | tools/feed-provenance.mjs — WHO is behind the keys in a relay feed? |
 | `join-apply.mjs` | yes | YES | yes | 314 | JOIN-APPLY — the JOINER's half of the Agent Commons admission gate, over the public relay. |
@@ -48,6 +48,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `relay-audit.mjs` | yes | - | yes | 58 | Audit a relay's stored state from the outside — `node tools/relay-audit.mjs <base-url>` |
 | `relay-feed-review.mjs` | yes | - | yes | 203 | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
+| `stick-scan.mjs` | - | - | - | 58 | Does the stick carry a SECOND COPY of this project? |
 | `stranger-journey.mjs` | yes | YES | yes | 251 | THE STRANGER JOURNEY — everything an external agent can do with nothing but the URL. |
 | `tool-census.mjs` | yes | YES | - | 169 | Generate docs/TOOLS.md: an inventory of everything under tools/, so no tool can sit in the tree |
 | `trial-all.mjs` | yes | - | - | 259 | ONE COMMAND FOR THE EVIDENCE THAT NOTHING WAS RUNNING. |
