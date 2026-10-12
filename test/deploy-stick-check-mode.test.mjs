@@ -97,3 +97,21 @@ test('a nested target is still refused (the wrong-root bug must not come back)',
   assert.equal(r.status, 2);
   assert.match(r.stdout, /must be a drive root/);
 });
+
+test('transient build output is neither deployed nor compared', () => {
+  // wrangler rewrites worker/.wrangler/tmp/** on every dev run. Shipping it put files on the stick
+  // that change ON THEIR OWN, and the first --check run reported four of them as drift -- a false
+  // alarm about code that was in sync. A check that cries wolf is a check that gets ignored.
+  assert.match(SRC, /const SKIP_DIRS = new Set\(\['\.wrangler', 'node_modules'\]\)/,
+    'build output must be excluded by rule');
+  const copyAt = SRC.indexOf('function copyTree');
+  const walkAt = SRC.indexOf('const walk = (dir, rel');
+  assert.notEqual(copyAt, -1);
+  assert.notEqual(walkAt, -1);
+  assert.ok(SRC.slice(copyAt).includes('if (SKIP_DIRS.has(e)) continue;'),
+    'copyTree must skip build output');
+  // The load-bearing half: if the WALK does not skip what the COPY skipped, every excluded file is
+  // reported as drift -- the false alarm returns even though nothing is shipped.
+  assert.ok(SRC.slice(walkAt, walkAt + 700).includes('if (SKIP_DIRS.has(e)) continue;'),
+    'the drift walk must skip exactly what the copy skipped, or it reports phantom drift');
+});

@@ -135,6 +135,13 @@ const FILES = [
   { from: join(ROOT, 'package.json'), to: join(STICK, 'package.json') },
 ];
 
+// Never deployed and never compared. wrangler rewrites worker/.wrangler/tmp/** on every dev run, so
+// shipping it puts files on the stick that change ON THEIR OWN: the first --check run after this flag
+// was added reported drift for four of them, a false alarm about code that was perfectly in sync. A
+// drift report nobody can trust is worse than no drift report, so build output is excluded BY RULE
+// here rather than by remembering to clean it up.
+const SKIP_DIRS = new Set(['.wrangler', 'node_modules']);
+
 const sha = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
 let failures = 0;
 const ok = (m) => console.log('  PASS ' + m);
@@ -147,6 +154,7 @@ function copyTree(from, to) {
   if (!existsSync(to)) mkdirSync(to, { recursive: true });
   let n = 0;
   for (const e of readdirSync(from)) {
+    if (SKIP_DIRS.has(e)) continue;   // build output: not ours to ship, and it would drift on its own
     const s = join(from, e), d = join(to, e);
     if (statSync(s).isDirectory()) n += copyTree(s, d);
     else { copyFileSync(s, d); n++; }
@@ -252,6 +260,7 @@ for (const t of TREES) {
   if (!existsSync(t.from)) continue;
   const walk = (dir, rel = '') => {
     for (const e of readdirSync(dir)) {
+      if (SKIP_DIRS.has(e)) continue;   // must match copyTree, or the walk reports drift the copy ignored
       const s = join(dir, e), r = rel ? rel + '/' + e : e;
       if (statSync(s).isDirectory()) { walk(s, r); continue; }
       const dst = join(t.to, r);
