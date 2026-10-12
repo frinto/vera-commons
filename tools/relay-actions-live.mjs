@@ -147,20 +147,36 @@ if (q.status !== 200) {
 }
 
 // --- probes: a CORRECT server refuses each of these, by name -----------------------------------
-const bogus = `probe-${Date.now().toString(36)}`;
-const ch = await post('/api/relay/challenge', { requestId: bogus });
+//
+// The SHAPE of the id decides which refusal is correct. An earlier version of this file probed only
+// with `probe-<hex>` -- not a valid 32-char id -- and recorded the relay's 400 as "it does not know
+// this request", which is FALSE: the relay says 400 for MALFORMED and 404 for WELL-FORMED-BUT-UNKNOWN.
+// Both shapes are probed below, so the distinction is measured here rather than assumed, and a
+// regression to the old reading fails in this file instead of in production.
+const malformed = `probe-${Date.now().toString(36)}`;   // deliberately NOT a 32-char id
+const unknown32 = 'Z'.repeat(32);                        // well formed, and certainly never queued
+
+const ch = await post('/api/relay/challenge', { requestId: unknown32 });
 if (ch.status === 404 && ch.body?.code === 'NOT_QUEUED') {
-  ok(`challenge refuses an unknown requestId before minting anything (404 ${ch.body.code})`);
+  ok(`challenge refuses a well-formed but queueless requestId before minting anything (404 ${ch.body.code})`);
 } else {
-  bad(`challenge with an unknown requestId returned ${ch.status} ${ch.body?.code ?? ''} — expected 404 NOT_QUEUED`);
+  bad(`challenge with a well-formed unknown requestId returned ${ch.status} ${ch.body?.code ?? ''} — expected 404 NOT_QUEUED`);
 }
 if (ch.status === 200) bad('*** the probe MINTED a challenge; the store is no longer untouched ***');
 
-const co = await post('/api/relay/collect', { id: bogus, requestId: bogus });
-if (co.status === 404 && co.body?.code === 'NOT_QUEUED') {
-  ok(`collect names an unknown request as GONE, not as a relay fault (404 ${co.body.code})`);
+const co = await post('/api/relay/collect', { id: malformed, requestId: malformed });
+if (co.status === 400 && co.body?.code === 'MALFORMED_REQUEST_ID') {
+  ok(`collect reports a MALFORMED request id as malformed, not as a missing entry (400 ${co.body.code})`);
 } else {
-  bad(`collect returned ${co.status} ${co.body?.code ?? ''} — expected 404 NOT_QUEUED`);
+  bad(`collect with a malformed requestId returned ${co.status} ${co.body?.code ?? ''} — expected 400 MALFORMED_REQUEST_ID`);
+}
+
+const co2 = await post('/api/relay/collect', { id: malformed, requestId: unknown32 });
+if (co2.status === 409 && co2.body?.code === 'NO_ANSWERS_YET') {
+  ok(`collect reports a well-formed unknown request as "not answered yet" (409 ${co2.body.code})`
+    + ' — the relay cannot tell "never queued" from "queued, nothing filed", so that is the most specific true answer');
+} else {
+  bad(`collect with a well-formed unknown requestId returned ${co2.status} ${co2.body?.code ?? ''} — expected 409 NO_ANSWERS_YET`);
 }
 
 const bad400 = await post('/api/relay/challenge', {});

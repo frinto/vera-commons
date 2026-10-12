@@ -314,11 +314,27 @@ let relay = await fetch(RELAY + '/admission/request', {
 });
 check('joiner opens a request (no account, no token, no console)', relay.status === 201, 'got ' + relay.status);
 
-console.log('  waiting out the relay\'s eventual consistency (~70 s)...');
-await new Promise((r2) => setTimeout(r2, 72000));
-
-r = await api('/api/relay/queue');
-const mine = (r.json?.waiting || []).find((w) => w.requestId === requestId);
+// Poll for visibility instead of sleeping a fixed 72 s.
+//
+// The sleep was a guess standing in for "the relay's eventual consistency", and it was wrong in BOTH
+// directions. Against the LOCAL relay -- an in-memory Map with zero propagation delay -- it burned the
+// full 72 seconds to observe something that was visible in the time it takes to answer one GET. And
+// against the live Cloudflare KV, a propagation slower than the guess would still fail the check below
+// after the wait had been spent, so the wait bought nothing there either. Polling turns the wait into
+// an OBSERVATION and prints how long it actually took, which is the number worth knowing. The budget
+// is unchanged, so the live path can still wait as long as it always could.
+const PROPAGATION_BUDGET_MS = 90000;
+const pollStart = Date.now();
+let mine = null;
+while (Date.now() - pollStart < PROPAGATION_BUDGET_MS) {
+  r = await api('/api/relay/queue');
+  mine = (r.json?.waiting || []).find((w) => w.requestId === requestId);
+  if (mine) break;
+  await new Promise((r2) => setTimeout(r2, 2000));
+}
+const waited = Date.now() - pollStart;
+console.log('  the join request became visible to the console after ' + waited + ' ms'
+  + (LIVE ? '   (live relay: this is real propagation)' : '   (local relay: measured, not slept)'));
 check('THE CONSOLE NOW SEES THE REMOTE JOINER (the whole point of the bridge)', Boolean(mine),
   'queue held ' + JSON.stringify((r.json?.waiting || []).map((w) => w.short)));
 check('a joiner never seen here is labelled "new"', mine?.stage === 'new', 'got ' + mine?.stage);
@@ -393,10 +409,19 @@ const badKey = await fetch(RELAY + '/admission/bind', {
 });
 check('★ a claim naming a malformed key is refused', badKey.status === 400, 'got ' + badKey.status);
 
-console.log('  waiting out the relay\'s eventual consistency (~70 s)...');
-await new Promise((r2) => setTimeout(r2, 72000));
+// Same reasoning as the queue poll above: sleep was a guess, poll is a measurement. This one waits on
+// the joiner's BIND claim reaching the console, and against the local in-memory relay that is
+// immediate -- the first version of this poll measured 4 ms where the sleep before it spent 72 s.
+const bindStart = Date.now();
+let bindSeen = false;
+while (Date.now() - bindStart < PROPAGATION_BUDGET_MS) {
+  r = await api('/api/relay/bind', { method: 'POST', body: { id: localId, requestId } });
+  if (r.status === 200 || r.status === 409) { bindSeen = true; break; }
+  await new Promise((r2) => setTimeout(r2, 2000));
+}
+console.log('  the bind claim reached the console after ' + (Date.now() - bindStart) + ' ms'
+  + (bindSeen ? '' : '   (budget exhausted -- the pull below is expected to fail)'));
 
-r = await api('/api/relay/bind', { method: 'POST', body: { id: localId, requestId } });
 check('★ THE ADMIN PULLS THE CLAIM INTO THE LOCAL RECORD (the gate now reaches other machines)',
   r.status === 200 && r.json?.bound === true, 'got ' + r.status + ' ' + JSON.stringify(r.json).slice(0, 160));
 

@@ -385,22 +385,33 @@ async function relayFetch(path, { method = 'GET', body, secret } = {}) {
   return { status: res.status, payload };
 }
 
-// The relay answers 400 for a requestId it does not know AT ALL, and 404 for one it knows but has
-// nothing for YET. Only the second means "not yet". Mapping the first onto a generic relay error
-// sends the operator hunting for an outage when the honest answer is "that entry is gone" -- the same
-// fact the challenge route already names NOT_QUEUED. Kept in ONE place because two copies of a
-// convention drift, and the drift here would be silent. Measured on the live relay by
-// tools/relay-actions-live.mjs: unknown -> 400, known-but-empty -> 404.
+// The relay has TWO ways of saying "I have nothing for that requestId", and they mean different
+// things. Measured on the live relay (tools/relay-actions-live.mjs):
+//
+//   400  the requestId is MISSING or MALFORMED -- it is not a 32-char id at all
+//   404  the requestId is WELL FORMED but the relay has nothing for it (never queued, or nothing
+//        filed against it yet)
+//
+// An earlier version of this helper called a 400 "the entry is gone". That was WRONG, and the way it
+// went wrong is worth keeping: the probe used `probe-<hex>`, which is not a valid id shape, so the
+// relay's "malformed" was read as "absent". The contradiction surfaced later in
+// tools/console-relay-trial.mjs, which has a PASSING check that a well-formed but never-seen id
+// ('Z' x 32) answers NO_BINDING_YET -- i.e. 404, not 400. A comment that states a measurement has to
+// BE a measurement.
+//
+// So a 400 is not a missing entry; it is a question the relay refused to parse, which from here means
+// the id we were handed was never an id. Say THAT: "no longer in the queue" would send the operator
+// hunting for an entry that never existed.
 //
 // It returns a BOOLEAN, not the response, and that is load-bearing: `json()` above is a block-bodied
-// arrow with no return, so it yields undefined. A caller written as `const g = relayGone(...);
+// arrow with no return, so it yields undefined. A caller written as `const g = relayMalformedId(...);
 // if (g) return g;` therefore falls straight through and writes a SECOND response onto a socket this
 // function already ended -- which does not return an error, it KILLS the console mid-session (live:
 // exit code 1, the operator sees the correct-looking first answer and the process then dies). Call it
-// as `if (relayGone(res, r)) return;`.
-function relayGone(res, r) {
+// as `if (relayMalformedId(res, r)) return;`.
+function relayMalformedId(res, r) {
   if (r.status !== 400) return false;
-  json(res, 404, { error: 'That request is no longer in the relay queue.', code: 'NOT_QUEUED' });
+  json(res, 400, { error: 'The relay rejected that request id as malformed.', code: 'MALFORMED_REQUEST_ID' });
   return true;
 }
 
@@ -1033,7 +1044,7 @@ const server = createServer(async (req, res) => {
 
         const a = await relayFetch(`/admission/answers?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (a.status === 404) return json(res, 409, { error: 'That agent has not answered yet.', code: 'NO_ANSWERS_YET' });
-        if (relayGone(res, a)) return;
+        if (relayMalformedId(res, a)) return;
         if (a.status !== 200) return json(res, 502, { error: `The relay answered ${a.status}.`, code: 'RELAY_ERROR' });
         const answers = a.payload?.answers;
         if (!Array.isArray(answers)) return json(res, 502, { error: 'The relay returned no answers array.', code: 'RELAY_ERROR' });
@@ -1071,7 +1082,7 @@ const server = createServer(async (req, res) => {
 
         const bnd = await relayFetch(`/admission/bind?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (bnd.status === 404) return json(res, 409, { error: 'That agent has not claimed an identity yet.', code: 'NO_BINDING_YET' });
-        if (relayGone(res, bnd)) return;
+        if (relayMalformedId(res, bnd)) return;
         if (bnd.status !== 200) return json(res, 502, { error: `The relay answered ${bnd.status}.`, code: 'RELAY_ERROR' });
 
         // The relay is not trusted here. It moved a key and a signature; the signature is verified
@@ -1095,7 +1106,7 @@ const server = createServer(async (req, res) => {
 
         const itv = await relayFetch(`/admission/interview?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (itv.status === 404) return json(res, 409, { error: 'That agent has not written an interview yet.', code: 'NO_INTERVIEW_YET' });
-        if (relayGone(res, itv)) return;
+        if (relayMalformedId(res, itv)) return;
         if (itv.status !== 200) return json(res, 502, { error: `The relay answered ${itv.status}.`, code: 'RELAY_ERROR' });
 
         // The text is recorded VERBATIM and never parsed, scored, or acted upon. It is shown to the
@@ -1141,7 +1152,7 @@ const server = createServer(async (req, res) => {
 
         const vres = await relayFetch(`/admission/verdict?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (vres.status === 404) return json(res, 409, { error: 'No verdict has been published for that request.', code: 'NO_VERDICT_YET' });
-        if (relayGone(res, vres)) return;
+        if (relayMalformedId(res, vres)) return;
         if (vres.status !== 200) return json(res, 502, { error: `The relay answered ${vres.status} for the verdict.`, code: 'RELAY_ERROR' });
 
         // The bind is fetched separately and is REQUIRED. A verdict says only "for request R, decision
