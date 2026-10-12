@@ -134,6 +134,14 @@ check('operator collects the answers', r.status === 200 && j.answers.length === 
 check('answers are NOT public (they are the joiner\'s work, not a billboard)',
   (await call(kv, '/admission/answers?requestId=' + RID)).status === 401);
 
+// 6b. THE JOINER BINDS THE KEY IT WILL SPEAK WITH -- and it must happen BEFORE the verdict.
+//     This step is mandatory, and it is now enforced: a grant that names no key would strand the
+//     applicant for good, because bind refuses forever once a verdict exists. The relay refuses
+//     such a grant outright (409 no_binding_yet). This test used to skip the step entirely, which
+//     is exactly how a flow no real joiner could complete stayed green.
+r = await call(kv, '/admission/bind', { method: 'POST', body: await stamp({ requestId: RID, agentId: JOINER.agentId, sig: 'G'.repeat(86) }) });
+check('joiner binds the key it will speak with', r.status === 201, 'got ' + r.status);
+
 // 7. operator publishes a signed verdict
 const VERDICT = {
   requestId: RID, decision: 'granted',
@@ -150,6 +158,10 @@ check('the response tells the joiner to verify the signature rather than trust t
   typeof j.verify === 'string' && /verify/i.test(j.verify));
 check('the relay never reports a score (it has no salt and cannot compute one)',
   !('score' in j) && !('ratio' in j) && !('total' in j));
+// The bind is operator-only to READ, so without the key in the verdict nobody but the operator
+// could ever link a public grant to an agent, and the grant would be unauditable by anyone else.
+check('the public verdict names the key it admitted', j.agentId === JOINER.agentId,
+  'agentId=' + String(j.agentId).slice(0, 8));
 
 console.log('');
 console.log('--- and it must resist abuse ---');
