@@ -17,6 +17,27 @@
 // tools/verify-relay-verdict.mjs re-verifies "from a FRESH process ... without reusing any of the
 // trial's in-memory state".
 //
+// DECLARED EXCEPTIONS (added 2026-10-12, after paying for their absence)
+// A record can be unrepairable rather than merely broken: one decided record in the live store has
+// never had ANY signature attesting its key -- the residue of an interrupted trial -- and no amount
+// of re-derivation will ever make it stand up. Reporting that as BROKEN is correct. But it is also
+// PERMANENT, so every later run ends "FAILED: 1 record(s) ... do NOT stand up", and that summary
+// line is then identical whether it is the known record or a NEW one that has just been tampered
+// with. Establishing which, this round, took a second command and a human reading of the log. A
+// permanent red light is not a check; it is noise that hides the one failure that matters.
+//
+// So a store may DECLARE its unrepairable records, in a sidecar file beside the store itself
+// (`<store>.known-broken.json`), each by FULL id with a stated reason. Deliberately NOT a flag such
+// as --allow-broken or --tolerate 1: a count or a wildcard would silently absorb the next tampered
+// record, which is exactly the defect this tool exists to catch. And deliberately NOT a list
+// committed to this repository: record ids belong to ONE store (the human's), so a repo-wide list
+// would be stale on every other machine and fail there.
+//
+// A declaration is believed only while it still describes reality: if a declared record is absent,
+// no longer decided, or NOW VERIFIES, the declaration is stale and this exits 2. An exception that
+// can never be cleaned up is a permanent hole, and an exception with no stated reason is not a
+// declaration at all, it is a silencing.
+//
 // WHAT COUNTS AS A FAILURE
 // Expired and never-completed records live in the SAME FILE as real ones, and they CANNOT verify --
 // that is the correct answer for them, not a defect. So a record is HELD TO ACCOUNT only when this
@@ -70,9 +91,43 @@ if (rows.length === 0) {
 
 const heldToAccount = (r) => r.status === 'decided';
 
+const EXC = arg('known-broken', `${STORE}.known-broken.json`);
+const declared = new Map();
+if (existsSync(EXC)) {
+  let exc;
+  try {
+    exc = JSON.parse(readFileSync(EXC, 'utf8'));
+  } catch (err) {
+    console.error(`${EXC} is not valid JSON: ${err?.message || err}`);
+    console.error('  A declarations file that cannot be read is not "no declarations" -- refusing to guess.');
+    process.exit(2);
+  }
+  const list = Array.isArray(exc) ? exc : exc?.knownBroken;
+  if (!Array.isArray(list)) {
+    console.error(`${EXC} is not a list of declared exceptions (expected { "knownBroken": [ ... ] }).`);
+    process.exit(2);
+  }
+  for (const e of list) {
+    const id = String(e?.id ?? '').trim();
+    const reason = String(e?.reason ?? '').trim();
+    if (!id || !reason) {
+      console.error(`${EXC} declares an exception with no id or no reason: ${JSON.stringify(e)}`);
+      console.error('  An exception with no stated reason is not a declaration, it is a silencing.');
+      process.exit(2);
+    }
+    declared.set(id, {
+      reason,
+      declaredAt: String(e?.declaredAt ?? '(undated)'),
+      declaredBy: String(e?.declaredBy ?? '(unnamed)'),
+    });
+  }
+}
+
 let held = 0;
 let broken = 0;
+let knownBroken = 0;
 let inert = 0;
+const usedDeclarations = new Set();
 console.log(`\n--- verifying ${rows.length} record(s) in ${STORE} ---\n`);
 
 for (const r of rows) {
@@ -93,9 +148,14 @@ for (const r of rows) {
 
   const must = heldToAccount(r);
   if (must) held += 1; else inert += 1;
-  if (must && !verifies) broken += 1;
+  const declaredHere = declared.get(id);
+  if (must && !verifies) {
+    if (declaredHere) { knownBroken += 1; usedDeclarations.add(id); } else broken += 1;
+  }
 
-  const label = must ? (verifies ? 'HELD-UP ' : 'BROKEN  ') : 'inert   ';
+  const label = must
+    ? (verifies ? 'HELD-UP  ' : (declaredHere ? 'KNOWN-BROKEN' : 'BROKEN  '))
+    : 'inert   ';
   // The FULL id, not a prefix. The whole point of naming a failing record is that someone can act on
   // it, and the action here is `verify-admission --id <id>` -- which a truncated id cannot feed. A
   // prefix also collides: two UUIDs sharing eight characters would print as the same record.
@@ -103,11 +163,57 @@ for (const r of rows) {
     + ` decision=${String(r.decision ?? '-').padEnd(7)} ${verifies ? 'verifies' : 'does NOT verify'}`);
 }
 
+// A declaration that no longer describes reality is a hole, not a footnote: it would keep excusing an
+// id that has since been repaired (or that never existed here), and each run would bless it silently.
+const stale = [];
+for (const [id, d] of declared) {
+  if (usedDeclarations.has(id)) continue;
+  const row = rows.find((x) => String(x?.id ?? '') === id);
+  stale.push({
+    ...d, id,
+    why: !row ? 'no record with this id exists in this store'
+      : !heldToAccount(row) ? `the record is ${String(row.status ?? 'undecided')}, so it is not held to account at all`
+        : 'the record NOW verifies -- it no longer needs an exception',
+  });
+}
+
 console.log('');
-console.log(`  ${held} record(s) recorded a DECISION and were held to account; ${broken} of them failed.`);
+if (knownBroken) {
+  console.log('  DECLARED KNOWN-BROKEN -- refused, not dropped, and not counted as standing up:');
+  for (const id of usedDeclarations) {
+    const d = declared.get(id);
+    console.log(`    ${id}  declared ${d.declaredAt} by ${d.declaredBy}: ${d.reason}`);
+  }
+  console.log('');
+}
+console.log(`  ${held} record(s) recorded a DECISION and were held to account; `
+  + `${broken + knownBroken} of them failed${knownBroken ? ` (${knownBroken} declared)` : ''}.`);
 console.log(`  ${inert} record(s) are expired or undecided: they cannot verify by construction, and are`
   + ' reported here rather than counted as failures.');
-console.log(broken
-  ? `\nFAILED: ${broken} record(s) this commons recorded a decision on do NOT stand up to independent re-derivation.\n`
-  : '\nOK: every record this commons decided on stands up to independent re-derivation from the store alone.\n');
-process.exit(broken ? 1 : 0);
+
+if (stale.length) {
+  console.error(`\nSTALE DECLARATION(S) in ${EXC} -- these exceptions no longer describe reality:\n`);
+  for (const s of stale) {
+    console.error(`  ${s.id}  declared ${s.declaredAt} by ${s.declaredBy}: ${s.reason}`);
+    console.error(`     why it is stale: ${s.why}`);
+  }
+  console.error('\n  Remove them, or re-declare them against what is actually there. An exception that'
+    + '\n  is never cleaned up becomes a permanent hole in this check.\n');
+  process.exit(2);
+}
+
+if (broken) {
+  console.log(`\nFAILED: ${broken} record(s) this commons recorded a decision on do NOT stand up to`
+    + ' independent re-derivation.\n');
+  process.exit(1);
+}
+if (knownBroken) {
+  // Deliberately NOT the clean banner. A record that does not stand up is a stated limit on this
+  // store, and a limit must never be phrased so it can be skimmed as a pass.
+  console.log(`\nNOT CLEAN: ${held - knownBroken} of ${held} decided record(s) stand up. ${knownBroken} is`
+    + ' declared known-broken above, with the reason and the date it was declared -- still refused,'
+    + '\n  still counted as a failure, and reported here rather than silently excused.\n');
+  process.exit(0);
+}
+console.log('\nOK: every record this commons decided on stands up to independent re-derivation from the store alone.\n');
+process.exit(0);

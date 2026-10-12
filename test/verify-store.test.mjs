@@ -116,3 +116,117 @@ test('a decided record that cannot be re-derived is held to account; an expired 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a DECLARED known-broken record is honoured, and is still never a clean store', () => {
+  // The defect this guards was measured on 2026-10-12: one unrepairable record (a decided grant whose
+  // key no signature ever attested) made EVERY run end "FAILED: 1 record(s) ... do NOT stand up",
+  // identical whether it was that known record or a NEWLY tampered one. Telling the two apart cost a
+  // second command and a human reading the log, so the red light was permanent and hid the signal it
+  // existed to give. The fix declares unrepairable records BY FULL ID WITH A STATED REASON, in a
+  // sidecar beside the store. These assertions pin both halves: the declaration is honoured and
+  // never phrased as a pass, while an undeclared failure in the same store still fails.
+  const TOOL = join(ROOT, 'tools', 'verify-store.mjs');
+  const run = (file, exc) => {
+    const args = [TOOL, '--store', file];
+    if (exc) args.push('--known-broken', exc);
+    try {
+      return { code: 0, out: execFileSync(process.execPath, args, { encoding: 'utf8', cwd: ROOT }) };
+    } catch (err) {
+      return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+    }
+  };
+  const broken = (id) => ({
+    id, status: 'decided', decision: 'grant', agentId: 'not-a-real-key',
+    interview: { statement: 'hello', sig: 'nope' },
+  });
+  const dir = mkdtempSync(join(tmpdir(), 'ac-vstore-declared-'));
+  try {
+    const store = join(dir, 'admissions.json');
+    const exc = join(dir, 'known-broken.json');
+    writeFileSync(store, JSON.stringify({ admissions: [broken('unrepairable-one'), { id: 'expired-one', status: 'expired' }] }));
+
+    const without = run(store);
+    assert.equal(without.code, 1, 'without a declaration, a decided record that does not verify must still fail');
+    assert.match(without.out, /BROKEN\s+unrepairable-one\b/, without.out);
+
+    writeFileSync(exc, JSON.stringify({
+      knownBroken: [{
+        id: 'unrepairable-one',
+        reason: 'never had a signature attesting its key; residue of an interrupted trial',
+        declaredAt: '2026-10-12', declaredBy: 'test',
+      }],
+    }));
+    const decl = run(store, exc);
+    assert.equal(decl.code, 0, `a declared unrepairable record must not fail the run:\n${decl.out}`);
+    assert.match(decl.out, /KNOWN-BROKEN\s+unrepairable-one\b/,
+      'the declared record must still be NAMED, not counted away');
+    assert.match(decl.out, /residue of an interrupted trial/,
+      'the stated reason must be printed -- a silent exception is what this must never become');
+    assert.match(decl.out, /declared 2026-10-12/, 'the date it was declared must be printed');
+    assert.match(decl.out, /NOT CLEAN/, 'it must say what it is');
+    assert.doesNotMatch(decl.out, /OK: every record/,
+      'a store holding a declared failure must NEVER print the clean banner -- that sentence is the whole point of this tool');
+    assert.match(decl.out, /1 of them failed \(1 declared\)/,
+      'the summary must attribute the failure to the declaration rather than losing count of it');
+
+    // A declaration buys exactly ONE id, never a class of them: add a second broken record and the
+    // run must fail again, naming the new one. A count or a wildcard would have absorbed it silently.
+    writeFileSync(store, JSON.stringify({ admissions: [broken('unrepairable-one'), broken('newly-tampered-one')] }));
+    const grown = run(store, exc);
+    assert.equal(grown.code, 1, `a NEW undeclared failure must still fail while another record is declared:\n${grown.out}`);
+    assert.match(grown.out, /BROKEN\s+newly-tampered-one\b/, 'the new failure must be named for what it is');
+    assert.match(grown.out, /KNOWN-BROKEN\s+unrepairable-one\b/, 'and the declared one must still be reported');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a declaration that no longer describes reality is a hole, not a footnote', () => {
+  // An exception nobody ever has to clean up is permanent, so every way a declaration can go stale
+  // must exit 2 instead of quietly keeping the hole open. The "the record NOW verifies" branch cannot
+  // be reached from here without minting a genuinely signed record -- that belongs to the admission
+  // tests -- so it is pinned at the source level and labelled as the weaker evidence it is.
+  const TOOL = join(ROOT, 'tools', 'verify-store.mjs');
+  const run = (file, exc) => {
+    const args = [TOOL, '--store', file, '--known-broken', exc];
+    try {
+      return { code: 0, out: execFileSync(process.execPath, args, { encoding: 'utf8', cwd: ROOT }) };
+    } catch (err) {
+      return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+    }
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'ac-vstore-stale-'));
+  try {
+    const store = join(dir, 'admissions.json');
+    const exc = join(dir, 'known-broken.json');
+    writeFileSync(store, JSON.stringify({ admissions: [{ id: 'expired-one', status: 'expired' }] }));
+
+    writeFileSync(exc, JSON.stringify({ knownBroken: [{ id: 'gone-one', reason: 'was broken once', declaredAt: '2026-10-12' }] }));
+    const gone = run(store, exc);
+    assert.equal(gone.code, 2, `a declaration for a record that is not here must be stale, not ignored:\n${gone.out}`);
+    assert.match(gone.out, /STALE DECLARATION/, gone.out);
+    assert.match(gone.out, /no record with this id exists in this store/, gone.out);
+
+    writeFileSync(exc, JSON.stringify({ knownBroken: [{ id: 'expired-one', reason: 'was broken once', declaredAt: '2026-10-12' }] }));
+    const inert = run(store, exc);
+    assert.equal(inert.code, 2, `a declaration for a record that is not held to account must be stale:\n${inert.out}`);
+    assert.match(inert.out, /not held to account/, inert.out);
+
+    writeFileSync(exc, JSON.stringify({ knownBroken: [{ id: 'expired-one' }] }));
+    const noReason = run(store, exc);
+    assert.equal(noReason.code, 2, `an exception with no stated reason is a silencing, not a declaration:\n${noReason.out}`);
+    assert.match(noReason.out, /no id or no reason/, noReason.out);
+
+    writeFileSync(exc, '{ not json');
+    const unreadable = run(store, exc);
+    assert.equal(unreadable.code, 2, `a declarations file that cannot be read is not "no declarations":\n${unreadable.out}`);
+    assert.match(unreadable.out, /not valid JSON/, unreadable.out);
+
+    assert.match(SRC, /the record NOW verifies/,
+      'the branch that catches a REPAIRED record must exist -- otherwise a stale exception could hide a recovery');
+    assert.match(SRC, /process\.exit\(2\);\n\}\n\nif \(broken\)/,
+      'stale declarations must exit 2 before any pass/fail counting');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

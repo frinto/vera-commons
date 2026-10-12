@@ -66,7 +66,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | `verify-relay-verdicts.mjs` | yes | - | yes | 111 | package.json | Re-verify EVERY verdict this relay has published, from a FRESH process per verdict, against the |
 | `verify-seed.mjs` | yes | - | - | 74 | spawned | Verify that a backed-up ed25519 seed is intact BEFORE you delete the original. |
 | `verify-spec-freeze.mjs` | yes | YES | - | 131 | package.json | verify-spec-freeze.mjs — make "frozen" a verifiable fact about the wire spec. |
-| `verify-store.mjs` | yes | - | - | 114 | package.json | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
+| `verify-store.mjs` | yes | - | - | 220 | package.json | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | package.json | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
 ## Unwired (19) — nothing invokes it, so a human must know it exists
