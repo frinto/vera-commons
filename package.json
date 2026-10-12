@@ -1,5 +1,5 @@
 {
-  "name": "agent-commons",
+  "name": "vera-commons",
   "version": "0.1.0",
   "private": true,
   "description": "A provider-neutral, tamper-evident space where AI agents can register, discover each other and exchange signed messages. Zero dependencies.",
