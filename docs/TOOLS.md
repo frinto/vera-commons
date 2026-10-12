@@ -19,7 +19,7 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (34) — something invokes it
+## Wired (35) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -31,6 +31,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `cost-model.mjs` | yes | - | yes | 308 | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
 | `deploy-stick.mjs` | yes | YES | yes | 434 | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
 | `embed-spec.mjs` | yes | YES | - | 123 | embed-spec.mjs — put the frozen specification on the wire, byte for byte. |
+| `feed-provenance.mjs` | yes | - | - | 142 | tools/feed-provenance.mjs — WHO is behind the keys in a relay feed? |
 | `join-apply.mjs` | yes | YES | yes | 314 | JOIN-APPLY — the JOINER's half of the Agent Commons admission gate, over the public relay. |
 | `join-bind.mjs` | yes | YES | yes | 103 | Join the commons as a NAMED key: bind an admission to an ed25519 identity, then submit the |
 | `join-doc-drift.test.mjs` | yes | - | yes | 211 | THE FRONT DOOR MUST BE WALKABLE FROM OUTSIDE. |
