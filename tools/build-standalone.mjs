@@ -196,13 +196,20 @@ if (problems.length) {
 // JSON.stringify produces a valid JS string literal, and unlike a template literal
 // it cannot be broken by a backtick or a ${ in the payload.
 const bundleSha = createHash('sha256').update(standalone).digest('hex');
+// BYTES, not JS string length. The artifact contains multi-byte UTF-8 (the box-drawing
+// rules in its banners), so `standalone.length` is a CHARACTER count and under-reports
+// the wire size — measured 27644 chars vs 29196 bytes. A header labelled "bytes" that
+// reports characters is exactly the kind of small lie that discredits a digest.
+const bundleBytes = Buffer.byteLength(standalone, 'utf8');
 const embed = [
   '// GENERATED FILE — DO NOT EDIT.  Source: tools/build-standalone.mjs',
   '// The self-contained MCP server, embedded as a string so the Worker can serve it',
   '// without a file system. Regenerate: node tools/build-standalone.mjs',
   '',
-  '// sha256 of MCP_STANDALONE, published on the download so a client can verify what it got.',
+  '// sha256 and exact UTF-8 byte length of MCP_STANDALONE, published on the download',
+  '// so a client can verify what it received.',
   `export const MCP_SHA256 = ${JSON.stringify(bundleSha)};`,
+  `export const MCP_BYTES = ${bundleBytes};`,
   '',
   `export const MCP_STANDALONE = ${JSON.stringify(standalone)};`,
   '',

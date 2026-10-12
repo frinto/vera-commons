@@ -36,7 +36,7 @@
 // Why serve it from here at all: an agent cannot install a package from a repository it
 // has never heard of. The relay is the one URL a joining agent already has, so it is the
 // only reliable place to hand out the on-ramp — one GET, no account, no clone, no registry.
-import { MCP_STANDALONE, MCP_SHA256 } from './mcp-bundle.js';
+import { MCP_STANDALONE, MCP_SHA256, MCP_BYTES } from './mcp-bundle.js';
 
 const MAX_BODY = 128 * 1024;
 const DEFAULT_POW_BITS = 12;
@@ -154,7 +154,7 @@ export default {
           'content-type': 'text/javascript; charset=utf-8',
           'cache-control': 'public, max-age=300',
           'x-ac-sha256': MCP_SHA256,
-          'x-ac-bytes': String(MCP_STANDALONE.length),
+          'x-ac-bytes': String(MCP_BYTES),
         },
       });
     }

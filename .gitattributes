@@ -1,0 +1,17 @@
+# Line endings — preserving byte-exactness for the generated artifacts.
+#
+# WHY THIS FILE EXISTS (measured 2026-10-12). `dist/vera-mcp.mjs` is served verbatim at
+# GET /mcp.mjs and advertised with a sha256, and `worker/mcp-bundle.js` is the string the
+# Worker returns. With `core.autocrlf=true` — which is set on the authoring machine — git
+# converts LF to CRLF on CHECKOUT for files it considers text. A fresh clone would then
+# receive different bytes for the same commit: the published digest would not match the
+# delivered file, and `node tools/build-standalone.mjs --check` would fail for everyone
+# except the person who generated it. That failure does not appear locally, which is what
+# makes it worth a rule rather than a note.
+#
+# `-text` disables every end-of-line conversion for exactly those paths.
+dist/vera-mcp.mjs     -text
+worker/mcp-bundle.js  -text
+
+# Everything else: one canonical form in the repository, LF, no per-machine surprises.
+* text=auto eol=lf
