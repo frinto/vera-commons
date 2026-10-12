@@ -26,6 +26,8 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, timingSafeEqual, createPrivateKey, sign } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
+import { volumeKind, admitMedia, refusalBanner } from './media.mjs';
+
 import { loadIdentity, shortId } from './src/identity.mjs';
 import { verifyMessage, messageId, canonicalize } from './src/message.mjs';
 import { AppendOnlyStore } from './src/store.mjs';
@@ -1118,12 +1120,34 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// --- the media gate, checked before a single admin route can answer ---------------------------
+// The key-file gate above answers "is the key here?". This answers the different question "is the
+// key HERE, on the stick?" -- and it is asked ONCE, at startup, before the server listens, so a
+// console running from a copy never serves a request at all. See console/media.mjs for what this
+// does and does not buy.
+const ALLOW_FIXED = process.argv.includes('--allow-fixed-disk');
+const media = await volumeKind(USB_ROOT);
+const verdict = admitMedia({ kind: media.kind, override: ALLOW_FIXED });
+if (!verdict.ok) {
+  console.error(refusalBanner(media.kind, media.detail));
+  process.exit(1);
+}
+if (verdict.overridden) {
+  console.warn('');
+  console.warn('  !! RUNNING FROM A FIXED DISK, NOT THE USB STICK (--allow-fixed-disk).');
+  console.warn(`  !! ${media.detail}`);
+  console.warn('  !! The admin key is readable from this volume. Any copy of this console behaves');
+  console.warn('  !! identically, so this run is indistinguishable from a faithful one.');
+  console.warn('');
+}
+
 server.listen(PORT, '127.0.0.1', () => {
   const s = stickState();
   console.log('');
   console.log('  Agent Commons Console');
   console.log('  =====================');
   console.log(`  USB stick      ${s.present ? 'present' : 'NOT PRESENT'}   ${KEY_FILE}`);
+  console.log(`  media          ${media.kind}${verdict.overridden ? '  (OVERRIDDEN -- not removable)' : ''}   ${media.detail}`);
   console.log(`  relay          ${RELAY}`);
   console.log('');
   console.log('  OPEN THIS IN YOUR BROWSER:');

@@ -49,6 +49,19 @@ if (basename(STICK) !== '' && !/^[A-Za-z]:\\?$/.test(STICK)) {
   console.log('the console derives USB_ROOT from its own path, so a nested root breaks it.');
   process.exit(2);
 }
+
+// The console refuses to start from anything that is not removable media (console/media.mjs).
+// That is correct, and it means the start-check below must know what it is deploying TO -- run
+// unmodified against a fixed disk it would report the gate working as "the console exited".
+const { volumeKind } = await import('../console/media.mjs');
+const TARGET_MEDIA = await volumeKind(STICK);
+const TARGET_IS_STICK = TARGET_MEDIA.kind === 'removable';
+console.log(`  target media   ${TARGET_MEDIA.kind}   (${TARGET_MEDIA.detail})`);
+if (!TARGET_IS_STICK) {
+  console.log(`  NOTE: ${STICK} is not removable media, so the console will refuse to run from it.`);
+  console.log('        The start-check below therefore passes --allow-fixed-disk. On a real stick');
+  console.log('        that flag is absent and the media gate is exercised for real.');
+}
 const PORT = Number(process.env.AC_DEPLOY_PORT || 7794);
 
 // The console imports './src/...' relative to ITS OWN directory, so it needs a copy of src INSIDE
@@ -65,7 +78,14 @@ const TREES = [
   { from: join(ROOT, 'worker'), to: join(STICK, 'worker') },
 ];
 const FILES = [
-  { from: join(ROOT, 'console', 'app.mjs'), to: join(STICK, 'console', 'app.mjs') },
+  // Every top-level module in console/ is carried BY RULE, not by name. The named version meant a
+  // new sibling module (console/media.mjs) could reach the repository, pass every test in the
+  // checkout, and then be absent on the stick -- where app.mjs imports it and the console dies
+  // with ERR_MODULE_NOT_FOUND. That is the same failure the console/src entry above already
+  // documents once. A name can be forgotten; a rule cannot.
+  ...readdirSync(join(ROOT, 'console'))
+    .filter((f) => f.endsWith('.mjs'))
+    .map((f) => ({ from: join(ROOT, 'console', f), to: join(STICK, 'console', f) })),
   { from: join(ROOT, 'package.json'), to: join(STICK, 'package.json') },
 ];
 
@@ -110,6 +130,26 @@ for (const f of FILES) {
   copied++;
 }
 console.log('  copied ' + copied + ' file(s)');
+
+// --- 1b. every relative import in the deployed console must resolve ON THE STICK ---------------
+// The checkout CANNOT catch this class of bug: the missing file is sitting right there in the
+// repository, so the console runs fine locally and dies only on the stick. Only the deployed tree
+// can answer the question, so it is asked of what was actually copied.
+{
+  const deployedDir = join(STICK, 'console');
+  const deployed = readdirSync(deployedDir).filter((f) => f.endsWith('.mjs'));
+  let checked = 0;
+  for (const f of deployed) {
+    const src = readFileSync(join(deployedDir, f), 'utf8');
+    for (const m of src.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+      checked++;
+      const target = resolve(deployedDir, m[1]);
+      if (!existsSync(target)) bad(`console/${f} imports ${m[1]}, which is NOT on the stick`);
+    }
+  }
+  if (deployed.length === 0) bad('no console modules were deployed at all');
+  ok(`resolved ${checked} relative import(s) across ${deployed.length} deployed console module(s)`);
+}
 
 // The launcher a non-technical user actually double-clicks. The deploy WRITES it, rather than
 // shipping a hand-written file, so it cannot drift from the layout: an earlier hand-written
@@ -188,7 +228,8 @@ for (const required of [
 // --- 3. START IT. This is the check that can actually fail ---------------------
 console.log('');
 console.log('--- starting the DEPLOYED console from the stick ---');
-const child = spawn(process.execPath, [join(STICK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser'], {
+const child = spawn(process.execPath, [join(STICK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser',
+  ...(TARGET_IS_STICK ? [] : ['--allow-fixed-disk'])], {
   cwd: join(STICK, 'console'), stdio: ['ignore', 'pipe', 'pipe'],
 });
 let out = '', err = '', exited = null;
@@ -203,7 +244,14 @@ process.on('exit', cleanup);
 await sleep(4000);
 
 if (exited !== null) {
-  bad('the deployed console EXITED immediately (code ' + exited + ')');
+  // Distinguish the media gate working from a genuinely broken deployment. On a fixed-disk target
+  // the gate firing is EXPECTED and is already accounted for above; if it fires anyway, the reason
+  // is worth stating rather than reporting as "the console exited".
+  if (/REFUSING TO START/.test(out + err)) {
+    bad('the deployed console refused to start (media gate) even though --allow-fixed-disk was passed');
+  } else {
+    bad('the deployed console EXITED immediately (code ' + exited + ')');
+  }
   const firstLines = (err || out).split('\n').filter(Boolean).slice(0, 8);
   for (const l of firstLines) console.log('       | ' + l);
 } else {
