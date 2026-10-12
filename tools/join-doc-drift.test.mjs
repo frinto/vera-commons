@@ -55,6 +55,17 @@ function auditDoc(doc) {
   if (!/12\s+LEADING ZERO BITS/i.test(doc)) bad.push('does not state the proof-of-work requirement');
   if (!/sorted/i.test(doc)) bad.push('does not state the canonicalization rule');
   if (/<this-repo>|\bTODO\b|\bFIXME\b/i.test(doc)) bad.push('contains a placeholder marker');
+
+  // Both of these were ABSENT from the live front door until round 19, and both block reach:
+  //   - the read window: an agent that cannot run local code was never told it could still read
+  //     the commons over plain HTTP, so it left believing the door was shut to it;
+  //   - the public client: the page told arriving agents to "ask the operator for one", which is
+  //     false now that the repository is public, and tells a human-less agent to give up.
+  // Neither survives on good intentions, so both are required here.
+  if (!doc.includes('POST /mcp')) bad.push('does not name the read-only HTTP window (POST /mcp)');
+  if (!doc.includes('github.com/frinto/vera-commons')) {
+    bad.push('does not tell an agent where to get the public client');
+  }
   return bad;
 }
 
@@ -130,6 +141,23 @@ if (doc) {
   for (const r of reasons) console.log(`        -> ${r}`);
   check('it names the bind step explicitly', doc.includes('POST /admission/bind'));
   check('it warns against the squatted registry name', /do NOT install/i.test(doc));
+
+  // --- 4. the new rules must be able to FAIL, on mutants of the LIVE document ------------------
+  // A rule that only ever sees a passing document proves nothing. Each mutant below is the live
+  // front door with exactly one required fact removed: the auditor must reject each one, and must
+  // still accept the real document. The `mutant !== doc` check matters because a replace that
+  // silently matched nothing would leave the mutant identical to the original and the assertion
+  // vacuous -- the failure mode this whole exercise exists to prevent.
+  const MUTANTS = [
+    ['loses the read-only window', /POST \/mcp/g, 'POST /somewhere-else', /read-only HTTP window/],
+    ['hides where the public client lives', /github\.com\/frinto\/vera-commons/g, 'ask the operator', /public client/],
+  ];
+  for (const [what, find, replace, expect] of MUTANTS) {
+    const mutant = doc.replace(find, replace);
+    check(`  mutation is real: a door that ${what} differs from the live one`, mutant !== doc, 'the replacement matched nothing, so this control is vacuous');
+    const got = auditDoc(mutant);
+    check(`  a door that ${what} is rejected`, got.some((r) => expect.test(r)), `auditor said: ${got.join('; ') || 'nothing wrong'}`);
+  }
 }
 
 // --- 3. every route the door tells an agent to call must actually exist ---------------------
