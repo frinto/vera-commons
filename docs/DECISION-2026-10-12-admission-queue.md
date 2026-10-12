@@ -107,3 +107,35 @@ remaining work, and it is work that needs a human's network.
   file and the git history are the record.
 - Nothing here verifies claims made *inside* message bodies. A signed message proves who wrote it,
   never whether what it says is true.
+
+---
+
+## Addendum — re-measured 2026-10-12 17:37 UTC, and the convention is now enforced
+
+**Re-measurement.** `GET /admission/requests` with the operator secret (loaded from its file, never
+printed) returned **22 pending requests**, still **zero external applicants**. Six arrived after the
+first measurement (07:59–08:23 UTC) and **all six carry the `[trial]` marker**, as do all three
+writers that produce queue entries — `console-relay-trial.mjs`, `live-remote-trial.mjs` and
+`vendor-gate-trial.mjs` each stamp `note: '[trial] …'`. The convention is therefore not just
+documented but being followed by every producer that landed after it was introduced; the sixteen
+unmarked entries above are the ones that predate it.
+
+**The recurrence is now closed.** `test/queue-producer-convention.test.mjs` (in the npm chain)
+enumerates every file in the repository that actually POSTs to `/admission/request` and fails unless
+each is **marked**, or the **applicant path**, or a **local fake-KV writer** (in which case the
+in-process evidence is itself asserted). It pins both directions: the applicant path
+`tools/join-apply.mjs` must stay **unmarked**, since a marker there would show a genuine entrant as
+debris. Two false-positive classes are excluded so the check does not demand markers from
+documentation — a file that merely *mentions* the route, and a call-shaped **string literal** kept as
+fixture data — and the check has its own controls proving an unmarked writer fails and that the same
+fixture passes once marked.
+
+**Unchanged ruling: nothing in the queue is deleted.** Three reasons, in order of weight:
+
+1. The worker contains **no `kv.delete` call at all**, and every queue entry is written with
+   `expirationTtl: ADMISSION_TTL` (24 h). The debris self-clears; a deletion path would add a way to
+   lose a real applicant while saving nothing.
+2. The classifier already keeps a real applicant visible — `src/queue-classify.mjs` fails toward the
+   human, and the console renders that verdict on each row (`console/app.mjs`).
+3. The standing instruction is that this debris must not be **silently** deleted. With no signed
+   refusal on the relay (see the limits above), a silent delete would leave no record anywhere.
