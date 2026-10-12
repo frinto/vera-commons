@@ -118,6 +118,33 @@ test('a body interior is a stated limit, but the ENVELOPE is still compared fiel
   assert.deepEqual(split.extraLive, [], 'nothing else is left to report');
 });
 
+test('a wrong ELEMENT type inside a contract array is drift, not an empty-side limit', () => {
+  // src/message.mjs:101 requires `refs` to be an array of STRINGS. The fixture carries one correctly
+  // typed element, so both sides have `$.messages[].refs[]` and the element type is compared.
+  const here = { messages: [{ v: 1, refs: ['c'.repeat(16)] }] };
+  const badRelay = { messages: [{ v: 1, refs: [123] }] };
+  const split = splitByComparability(diffShape(shapeOf(here), shapeOf(badRelay)),
+    emptyArrayPaths(here), emptyArrayPaths(badRelay));
+
+  assert.deepEqual(split.missingLive, ['$.messages[].refs[]:string'],
+    'the string element is missing on the relay side and MUST be reported');
+  assert.deepEqual(split.extraLive, ['$.messages[].refs[]:number'],
+    'the number element is extra on the relay side and MUST be reported');
+  assert.deepEqual(split.notComparable, [], 'nothing here is peer content, so nothing may be demoted');
+
+  // CONTROL: the shape this fixture USED to have -- an empty array on this side -- demotes exactly that
+  // element path, so the same non-conforming relay array would have read as "same (limits)". The
+  // element in the fixture is what closes that blind spot; if the rule ever stops demoting here, this
+  // control fails and says so.
+  const emptyHere = { messages: [{ v: 1, refs: [] }] };
+  const splitEmpty = splitByComparability(diffShape(shapeOf(emptyHere), shapeOf(badRelay)),
+    emptyArrayPaths(emptyHere), emptyArrayPaths(badRelay));
+  assert.ok(splitEmpty.missingLive.length === 0 && splitEmpty.extraLive.length === 0,
+    'CONTROL: with an empty array on this side the element difference disappears entirely');
+  assert.ok(splitEmpty.notComparable.some((n) => n.path.startsWith('$.messages[].refs[]')),
+    'CONTROL: it disappears because the emptiness rule demotes it -- which is why the fixture now has an element');
+});
+
 test('the local side is SEEDED, so `cursor` is compared as the same kind of fact as the relay', async () => {
   const seeded = await worker.fetch(new Request('https://local.test/messages'),
     { COMMONS: mockKV(await fixtureSeed()) });

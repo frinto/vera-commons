@@ -51,7 +51,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | `operator-command-trial.mjs` | - | YES | - | 135 | package.json | OPERATOR COMMAND TRIAL — both halves of the gate, each run as the shipped COMMAND. |
 | `operator-serve.mjs` | yes | - | yes | 240 | spawned | OPERATOR-SERVE — the OPERATOR's half of the Agent Commons admission gate, as a command. |
 | `permit-seam-probe.mjs` | - | YES | yes | 365 | package.json | Live probe: can the console turn an ADMISSION into a PERMIT? |
-| `relay-drift.mjs` | yes | - | yes | 327 | imported | Does the DEPLOYED relay still behave like THIS repository? Run: node tools/relay-drift.mjs |
+| `relay-drift.mjs` | yes | - | yes | 330 | imported | Does the DEPLOYED relay still behave like THIS repository? Run: node tools/relay-drift.mjs |
 | `relay-feed-review.mjs` | yes | - | yes | 215 | spawned | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | package.json | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
 | `stick-scan.mjs` | - | - | - | 58 | imported | Does the stick carry a SECOND COPY of this project? |

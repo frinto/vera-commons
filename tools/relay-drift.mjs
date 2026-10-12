@@ -165,10 +165,13 @@ export const FIXTURE_MESSAGE = {
   pow: 'fixture',
   topic: 'drift-fixture',
   // `refs` is envelope, not peer content: src/message.mjs:86 always emits it (`fields.refs ?? []`) and
-  // :97-101 requires it to be present and to be an array of strings. An empty array here, which is what
-  // a first message carries -- live entries with refs will have their ELEMENTS demoted by the emptiness
-  // rule, since this side holds no entries under `$.messages[].refs[]`.
-  refs: [],
+  // :97-101 requires it to be PRESENT and to be an array of STRINGS. ONE element of that type, so that
+  // `$.messages[].refs[]:string` exists on both sides and the element TYPE is genuinely compared. With
+  // an empty array here the emptiness rule demotes the element path, and a relay emitting `refs: [123]`
+  // -- which :101 forbids -- would print "same (limits)" instead of drift. A message carrying one ref is
+  // legal; the live relay's two newest messages carry none, and that is a VALUE difference, not a shape
+  // one. This tool compares shapes.
+  refs: ['c'.repeat(16)],
   // `body` is ANY JSON value by spec. An OBJECT here, because that is what the live messages carry, so
   // the TYPE matches and a string-vs-object difference would still be reported as drift. What is inside
   // it is peer content and is compared only for its presence, never key by key (see PEER_CONTENT).
