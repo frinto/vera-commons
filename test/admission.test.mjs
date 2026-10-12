@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createAdmissionManager } from '../src/admission.mjs';
+import { createAdmissionManager, bindBytes } from '../src/admission.mjs';
+import { generateIdentity, sign } from '../src/identity.mjs';
 
 const KB = { chains: [
   ['falcon', 'bird', 'animal', 'living thing'],
@@ -20,10 +21,21 @@ const KB = { chains: [
   ['sonnet', 'poem', 'text', 'abstract thing'],
 ] };
 const SALT = 'admission-test-verifier-secret';
-// A syntactically valid ed25519 public key (43-char base64url). Its private half is unknown and
-// deliberately so: `decide()` must never need to verify a signature, only to require that a key
-// was declared. Requiring a signature here would be testing the wrong layer.
-const AGENT_ID = 'A'.repeat(43);
+// A REAL keypair, because the rule at this seam is now about signatures, and a key whose private half
+// is unknown can only ever exercise the SHAPE of a key — which is exactly how a grant naming a key
+// that nothing attests to became possible (measured: the live store held one, interview absent AND no
+// bindSig, and tools/verify-store.mjs refused to bless it ever after). The earlier position here was
+// that `decide()` "must never need to verify a signature, only to require that a key was declared".
+// That position is what the two layers disagreeing produced: the writer accepted what the checker
+// rejects, and `granteeFromAdmission()` hands the grantee to a PERMIT — so a declared-but-unproven
+// key was one step from authority. AGENT_ID remains the key every assertion below names.
+const SIGNER = generateIdentity();
+const AGENT_ID = SIGNER.agentId;
+// The real joiner shape: the key is named at `start()`, and PROVEN later. A first signed bind over the
+// named key must be allowed, or every such record would be permanently ungrantable.
+const prove = (manager, id) => manager.bind(id, {
+  agentId: AGENT_ID, sig: sign(SIGNER, bindBytes({ id, agentId: AGENT_ID })),
+});
 const TEST_KB = KB;
 
 const roots = [];
@@ -132,6 +144,7 @@ try {
   // permit: a grant is bookkeeping, and authority remains a separate deliberate act.
   const boundFix = fixture();
   const boundChallenge = boundFix.manager.start('join-key-bound', { agentId: AGENT_ID });
+  assert.equal(prove(boundFix.manager, boundChallenge.id).ok, true, 'the fixture must PROVE the key it names');
   boundFix.manager.answer(boundChallenge.id, solve(boundChallenge.challenge));
   const grant = boundFix.manager.decide(boundChallenge.id, 'grant', 'admin-agent-7');
   assert.deepEqual(grant, { id: boundChallenge.id, decision: 'grant', by: 'admin-agent-7', grantee: AGENT_ID });
@@ -222,6 +235,8 @@ try {
   // grantee, so it is started with a key; those are two independent rules, not one.
   const noInterview = fixture({ items: 8 });
   const noInterviewChallenge = noInterview.manager.start('join-key-no-interview', { agentId: AGENT_ID });
+  assert.equal(prove(noInterview.manager, noInterviewChallenge.id).ok, true,
+    'the KEY must be proven; the INTERVIEW is what this fixture leaves absent, and that is the rule under test');
   assert.equal(noInterview.manager.list()[0].interview, null);
   assert.equal(noInterview.manager.answer(noInterviewChallenge.id, solve(noInterviewChallenge.challenge)).ok, true);
   assert.deepEqual(noInterview.manager.decide(noInterviewChallenge.id, 'grant', 'admin-agent-no-interview'), {
@@ -230,6 +245,33 @@ try {
   assert.equal(noInterview.manager.list()[0].status, 'decided');
   assert.equal(noInterview.manager.list()[0].interview, null);
   console.log('PASS an absent optional interview does not block admin decision');
+
+  // --- A KEY THAT WAS ONLY NAMED IS NOT A KEY THAT WAS PROVEN -----------------------------------
+  // Measured before this was enforced, not reasoned: `start({ agentId })` writes the field with no
+  // signature behind it, `decide()` checked only that the field was PRESENT, and the grant went
+  // through. The checker has always refused to bless such a record ('the bound key is attested by
+  // SOME signature (bind or interview)'), so the two layers disagreed — and the store kept the
+  // record the checker rejects. Live instance measured 2026-10-12: one decided grant with an absent
+  // interview AND no bindSig, unverifiable ever since because nothing can re-derive it.
+  {
+    const named = fixture({ items: 8 });
+    const c = named.manager.start('join-key-named-not-proven', { agentId: AGENT_ID });
+    assert.equal(named.manager.answer(c.id, solve(c.challenge)).ok, true);
+    const refused = named.manager.decide(c.id, 'grant', 'admin-agent-unattested');
+    assert.equal(refused.ok, false, 'a grant naming a key that nothing attests to must be refused');
+    assert.equal(refused.reason, 'cannot_grant_unattested_admission');
+    assert.equal(refused.attestation, 'no_signature_attests_this_key');
+    const after = named.manager.list()[0];
+    assert.equal(after.status, 'answered', 'a refused grant must leave the record OPEN, not close it');
+    assert.equal(after.grantee, null);
+
+    // ...and the refusal must not be a dead end: the same record becomes grantable the moment the key
+    // is proven, which is the only recovery an operator should need.
+    assert.equal(prove(named.manager, c.id).ok, true, 'the named key can still be proven afterwards');
+    assert.equal(named.manager.decide(c.id, 'grant', 'admin-agent-unattested').decision, 'grant');
+    assert.equal(named.manager.list()[0].grantee, AGENT_ID);
+    console.log('PASS a grant naming an unproven key is refused, stays open, and grants once proven');
+  }
 
   // --- THE MECHANICAL CHALLENGE MUST BE PASSED, NOT MERELY ANSWERED ---------------------------
   // 'answered' never meant 'passed': answer() records a failed attempt as answered so the operator
@@ -240,6 +282,9 @@ try {
   {
     const failing = fixture({ items: 20 });
     const c = failing.manager.start('join-key-failed-grant', { agentId: AGENT_ID });
+    // Proven first, so the reason under test is the CHALLENGE verdict and not the missing proof. The
+    // same block's own words below say it: "a 0/20 applicant who had bound a key could be granted".
+    assert.equal(prove(failing.manager, c.id).ok, true);
     const denied = failing.manager.answer(c.id, Array(20).fill('incorrect'));
     assert.equal(denied.ok, false);
     assert.equal(failing.manager.list()[0].status, 'answered', 'a failed attempt is still an attempt');
@@ -258,6 +303,7 @@ try {
   {
     const over = fixture({ items: 20 });
     const c = over.manager.start('join-key-override', { agentId: AGENT_ID });
+    assert.equal(prove(over.manager, c.id).ok, true);
     over.manager.answer(c.id, Array(20).fill('incorrect'));
     const g = over.manager.decide(c.id, 'grant', 'admin-agent-11', { overrideFailedChallenge: true });
     assert.equal(g.decision, 'grant', `an explicit override must still grant: ${JSON.stringify(g)}`);
@@ -272,6 +318,7 @@ try {
   {
     const good = fixture({ items: 20 });
     const c = good.manager.start('join-key-passes', { agentId: AGENT_ID });
+    assert.equal(prove(good.manager, c.id).ok, true);
     assert.equal(good.manager.answer(c.id, solve(c.challenge)).ok, true);
     const g = good.manager.decide(c.id, 'grant', 'admin-agent-12');
     assert.equal(g.decision, 'grant');

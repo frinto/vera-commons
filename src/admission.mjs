@@ -102,6 +102,54 @@ function safeWrong(wrong) {
 }
 
 /** Create a local manager with verifier-only salt and knowledge base injected by its owner. */
+/**
+ * The property a GRANT needs, stated once and in one place: the key being admitted is attested by a
+ * signature that can be re-derived from this record alone.
+ *
+ * `agentId` on its own is not that property. `start({ agentId })` and `adoptRelay({ grantee })` both
+ * write the field from outside, with no signature behind them, so its presence shows what the
+ * operator INTENDED to admit, not that the applicant holds the private half of the key. `bind()`
+ * already states the standard for its own field: keep the proof, not just the verdict.
+ *
+ * tools/verify-admission.mjs has always refused to bless such a record ('the bound key is attested
+ * by SOME signature (bind or interview)'), and tools/verify-store.mjs asks it about every decided
+ * record in a store. That check runs after the fact, where a bad grant cannot be changed — only
+ * reported. This is the same rule moved to the write seam, which is the only place it still can.
+ *
+ * The domains differ and are not interchangeable: a binding made locally is signed over
+ * (id, agentId), one that arrived through the relay over (requestId, agentId) — which is why
+ * bindRelay records `boundVia` and `relayRequestId`. Re-deriving a relay signature without its
+ * requestId is impossible, so a record claiming that shape proves nothing and is refused.
+ */
+export function attestation(rec = {}) {
+  if (!isAgentId(rec.agentId)) return { ok: false, reason: 'no_agent_id' };
+  const boundVia = rec.boundVia ?? 'local';
+  const ivVia = rec.interview?.via ?? boundVia;
+  const relayReq = rec.relayRequestId ?? rec.interview?.relayRequestId ?? null;
+  if (boundVia === 'relay' && !relayReq) return { ok: false, reason: 'relay_bind_without_request_id' };
+
+  if (typeof rec.bindSig === 'string' && rec.bindSig) {
+    const bytes = boundVia === 'relay'
+      ? relayBindBytes({ requestId: relayReq, agentId: rec.agentId })
+      : bindBytes({ id: rec.id, agentId: rec.agentId });
+    try { if (verify(rec.agentId, bytes, rec.bindSig) === true) return { ok: true, via: `${boundVia}-bind` }; }
+    catch { /* the interview may still attest this key; fall through rather than decide here */ }
+  }
+
+  const iv = rec.interview;
+  if (iv && typeof iv.statement === 'string' && typeof iv.sig === 'string' && iv.sig) {
+    if (ivVia !== 'relay' || relayReq) {
+      const bytes = ivVia === 'relay'
+        ? relayInterviewBytes({ requestId: relayReq, agentId: rec.agentId, statement: iv.statement })
+        : interviewBytes({ id: rec.id, agentId: rec.agentId, statement: iv.statement });
+      try { if (verify(rec.agentId, bytes, iv.sig) === true) return { ok: true, via: `${ivVia}-interview` }; }
+      catch { /* nothing attests this key; report that below */ }
+    }
+  }
+
+  return { ok: false, reason: 'no_signature_attests_this_key' };
+}
+
 export function createAdmissionManager({
   dir,
   salt,
@@ -354,7 +402,13 @@ export function createAdmissionManager({
     const store = readStore();
     const record = store.admissions.find((entry) => entry.id === id);
     if (!record) return { reason: 'unknown_admission' };
-    if (record.agentId) return { reason: 'already_bound' };
+    // A key that `start({ agentId })` merely NAMED is not bound yet: naming is intent, a signature is
+    // proof. Refusing the proof because the name is already on the record would make every such
+    // record permanently ungrantable, so a first signed bind over the SAME key may upgrade it.
+    // What must never happen: a second proof (binding is one-way), or a proof for a DIFFERENT key
+    // (that is taking over an admission someone else holds).
+    if (record.bindSig) return { reason: 'already_bound' };
+    if (record.agentId && record.agentId !== agentId) return { reason: 'already_bound' };
     let valid = false;
     try { valid = verify(agentId, bindBytes({ id, agentId }), sig) === true; }
     catch { valid = false; }
@@ -390,7 +444,11 @@ export function createAdmissionManager({
     const store = readStore();
     const record = store.admissions.find((entry) => entry.id === id);
     if (!record) return { reason: 'unknown_admission' };
-    if (record.agentId) return { reason: 'already_bound' };
+    // Same relaxation as bind(), and for the same reason: a record whose key was only named must stay
+    // reachable from outside, or a joiner who was pre-registered by name but never bound could never
+    // be admitted over the relay at all.
+    if (record.bindSig) return { reason: 'already_bound' };
+    if (record.agentId && record.agentId !== agentId) return { reason: 'already_bound' };
     let valid = false;
     try { valid = verify(agentId, relayBindBytes({ requestId, agentId }), sig) === true; }
     catch { valid = false; }
@@ -492,6 +550,20 @@ export function createAdmissionManager({
     // authorise nobody in particular, which is worse than refusing because it LOOKS like an
     // admission happened. Refusing is always allowed — closing a bad record needs no grantee.
     if (decision === 'grant' && !record.agentId) return { ok: false, reason: 'cannot_grant_unbound_admission' };
+    // The same category of refusal, one step further in: the record NAMES a key, but nothing attests
+    // that the applicant holds it. Checked here, beside the unbound rule, because both are
+    // properties of the record the operator has to go and fix — not verdicts about the challenge.
+    if (decision === 'grant') {
+      const att = attestation(record);
+      if (!att.ok) {
+        return {
+          ok: false,
+          reason: 'cannot_grant_unattested_admission',
+          attestation: att.reason,
+          hint: 'This admission names a key that no stored signature covers. Have the applicant bind it (bind, or bindRelay from outside) or submit a signed interview first; granting now would authorise a key nobody has proved it holds.',
+        };
+      }
+    }
     // Checked AFTER the bind rule so the reason stays "cannot_grant_unbound_admission" for an
     // unbound record: that reason names the missing thing the operator has to fix, and reordering it
     // would send them to re-run a challenge that was never the problem.
@@ -550,6 +622,21 @@ export function createAdmissionManager({
     const id = `relay:${requestId}`;
     const existing = store.admissions.find((entry) => entry.id === id);
     if (existing && existing.status === 'decided') return { ok: false, reason: 'already_decided' };
+    // Same rule as decide(), and it matters more here: this is the path a decision made ELSEWHERE
+    // takes into this store. `grantee` arrives as a string in a message, so on its own it is the
+    // weakest possible evidence — the record it names may not even exist locally. Attestation is
+    // looked for in the local record, which is where bindRelay()/interviewRelay() put the proof.
+    if (decision === 'grant') {
+      const att = attestation(existing ?? { id, agentId: grantee });
+      if (!att.ok) {
+        return {
+          ok: false,
+          reason: 'cannot_grant_unattested_admission',
+          attestation: att.reason,
+          hint: 'A relay decision granted a key that nothing in this store attests to. The applicant has to bind (bindRelay) or interview (interviewRelay) with a signature first; a decision that arrives before the proof is not adoptable.',
+        };
+      }
+    }
 
     const at = Number.isFinite(Number(decidedAt)) && Number(decidedAt) > 0 ? Number(decidedAt) : timestamp();
     const record = existing ?? { id, startedAt: at };
