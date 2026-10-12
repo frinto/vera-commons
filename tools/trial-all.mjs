@@ -53,6 +53,14 @@ const REGISTRY = [
     why: 'Negative control: a DEAD relay must not produce a false ok, and the journey refuses to lie about it. Does not touch the live relay at all.',
   },
   {
+    id: 'mcp-registry',
+    file: 'tools/mcp-registry-check.mjs',
+    args: [],
+    npm: null,
+    writes: false,
+    why: 'Fetches the LIVE published server.json schema, validates our descriptor against the constraints it declares, then performs a real MCP handshake against the URL the descriptor advertises. Two GET/POST reads, nothing registered. Deliberately NOT in the npm test chain: it depends on a third-party URL, and the build must not break because someone else moved a file.',
+  },
+  {
     id: 'remote-mcp',
     file: 'tools/remote-mcp-trial.mjs',
     args: [],
