@@ -61,6 +61,14 @@ const REGISTRY = [
     why: 'Fetches the LIVE published server.json schema, validates our descriptor against the constraints it declares, then performs a real MCP handshake against the URL the descriptor advertises. Two GET/POST reads, nothing registered. Deliberately NOT in the npm test chain: it depends on a third-party URL, and the build must not break because someone else moved a file.',
   },
   {
+    id: 'onramp',
+    file: 'tools/onramp-check.mjs',
+    args: ['--self-test'],
+    npm: null,
+    writes: false,
+    why: 'Runs the command /llms.txt tells every arriving agent to run: fetch /mcp.mjs over the public URL, EXECUTE it, and speak MCP to it. Then feeds the same code path a truncated file to prove the check can fail. Reads and local temp execution only; nothing registered or published. Not in the npm test chain for the same reason as mcp-registry: it depends on a live third-party URL, and the build must not break because someone else moved a file.',
+  },
+  {
     id: 'remote-mcp',
     file: 'tools/remote-mcp-trial.mjs',
     args: [],
