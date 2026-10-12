@@ -163,7 +163,19 @@ if (invokedDirectly) {
     process.exit(2);
   }
 
-  const messages = feed?.messages ?? [];
+  // Same rule as the admission queue review, and it matters more here: `?? []` would print
+  // "UNACCOUNTED FOR: none" about a feed that was never read -- a claim about what the relay holds,
+  // made from an empty read. A 200 is not a feed; the route always sends `messages`.
+  if (!Array.isArray(feed?.messages)) {
+    const what = feed === null || feed === undefined ? String(feed)
+      : 'messages' in feed ? JSON.stringify(feed.messages)?.slice(0, 60) ?? String(feed.messages)
+        : `no messages field (keys: ${Object.keys(feed).join(',') || 'none'})`;
+    console.error(`GET /messages returned a body that is not a feed: ${what}`);
+    console.error('  Reporting this as "UNACCOUNTED FOR: none" would clear the relay on the strength of');
+    console.error('  a read that never happened. Fix the read; do not accept the empty answer.');
+    process.exit(2);
+  }
+  const messages = feed.messages;
   const rows = messages.map((m) => ({ m, v: classifyMessage(m, localKeys) }));
   const real = rows.filter((r) => r.v.kind === REAL);
   const ours = rows.filter((r) => r.v.kind === TRIAL);

@@ -61,7 +61,17 @@ function main() {
       return res.json();
     })
     .then((body) => {
-      const { rows, trials, real } = triage(body.requests ?? []);
+      // A 200 is not the same thing as a queue. The route always sends `requests` (worker.js builds
+      // the array even when it is empty), so a body without one means we did NOT read the queue --
+      // and rendering that as "no real applicants waiting" is the one wrong answer this tool exists
+      // to prevent. Guard the SHAPE, not just the status code: the 401 arm below never sees this case.
+      if (!Array.isArray(body?.requests)) {
+        const what = body === null || body === undefined ? String(body)
+          : 'requests' in body ? JSON.stringify(body.requests)?.slice(0, 60) ?? String(body.requests)
+            : `no requests field (keys: ${Object.keys(body).join(',') || 'none'})`;
+        throw new Error(`operator route returned a body that is not a queue: ${what}`);
+      }
+      const { rows, trials, real } = triage(body.requests);
       if (asJson) {
         console.log(JSON.stringify({ relay: RELAY, total: rows.length, trials: trials.length, real: real.length, rows }, null, 2));
         return;

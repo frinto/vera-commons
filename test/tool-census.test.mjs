@@ -213,9 +213,12 @@ test('the census states HOW a tool is wired, because "imported" is a weaker clai
   const byName = Object.fromEntries(buildCensus().map(r => [r.name, r]));
   assert.equal(byName['tool-census.mjs'].via, 'package.json', 'an npm script names it');
   assert.equal(byName['verify-seed.mjs'].via, 'spawned', 'its test runs it as a child process');
-  assert.equal(byName['admission-queue-review.mjs'].via, 'imported',
-    'two tests import its functions and nothing runs it as a program -- the census must say so rather '
-    + 'than call it wired and leave the reader to guess');
+  assert.equal(byName['admission-queue-review.mjs'].via, 'spawned',
+    'its CLI test now runs it as a child process; this row read "imported" until that test existed, '
+    + 'and the pin failing on the change is the column doing its job');
+  assert.equal(byName['stick-scan.mjs'].via, 'imported',
+    'the one remaining import-only row: its code is exercised by its test and nothing runs it as a '
+    + 'program -- the weaker claim this column exists to expose rather than hide');
   assert.equal(byName['stranger-journey.mjs'].via, 'trial registry',
     'no source file calls it; the registry runs it through a computed path');
   assert.equal(byName['message-id.mjs'].via, null,

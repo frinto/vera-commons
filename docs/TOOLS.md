@@ -29,7 +29,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | tool | args | writes | net | lines | wired via | purpose |
 | --- | --- | --- | --- | --- | --- | --- |
 | `admission-ceremony.mjs` | yes | - | yes | 287 | package.json | Run the admission ceremony against the REAL deployed console. |
-| `admission-queue-review.mjs` | yes | - | yes | 97 | imported | Review the relay's admission queue as the operator, and separate TRIAL DEBRIS from a REAL |
+| `admission-queue-review.mjs` | yes | - | yes | 107 | spawned | Review the relay's admission queue as the operator, and separate TRIAL DEBRIS from a REAL |
 | `bridge-trial.mjs` | - | YES | yes | 315 | trial registry | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
 | `build-standalone.mjs` | yes | YES | - | 296 | package.json | Build a SELF-CONTAINED single-file MCP server out of the layered sources. |
 | `ceremony-live-trial.mjs` | yes | YES | yes | 233 | package.json | CEREMONY LIVE TRIAL — prove the admin ceremony tool's HAPPY path against the REAL store. |
@@ -51,7 +51,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | `operator-command-trial.mjs` | - | YES | - | 135 | package.json | OPERATOR COMMAND TRIAL — both halves of the gate, each run as the shipped COMMAND. |
 | `operator-serve.mjs` | yes | - | yes | 240 | spawned | OPERATOR-SERVE — the OPERATOR's half of the Agent Commons admission gate, as a command. |
 | `permit-seam-probe.mjs` | - | YES | yes | 365 | package.json | Live probe: can the console turn an ADMISSION into a PERMIT? |
-| `relay-feed-review.mjs` | yes | - | yes | 203 | imported | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
+| `relay-feed-review.mjs` | yes | - | yes | 215 | spawned | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | package.json | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
 | `stick-scan.mjs` | - | - | - | 58 | imported | Does the stick carry a SECOND COPY of this project? |
 | `stranger-journey.mjs` | yes | YES | yes | 251 | trial registry | THE STRANGER JOURNEY — everything an external agent can do with nothing but the URL. |
