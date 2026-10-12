@@ -15,7 +15,7 @@
 
 import { canonicalize } from './message.mjs';
 import { verify } from './identity.mjs';
-import { relayBindBytes, isAgentId } from './admission.mjs';
+import { relayBindBytes, isAgentId, attestation } from './admission.mjs';
 
 /**
  * The key an admission authorises, or the reason it authorises nobody.
@@ -35,6 +35,20 @@ export function granteeFromAdmission(record) {
   // over by picking one of the two.
   if (record.agentId && record.grantee !== record.agentId) {
     return { ok: false, reason: 'grantee_key_mismatch' };
+  }
+  // The check that decides whether a permit has anything behind it. Everything above reads FIELDS,
+  // and a field is exactly what someone editing this store can write — the store is a file on disk,
+  // which is why tamper-EVIDENCE rather than tamper-proofness is the claim. Measured instance: the
+  // live store held a decided grant with no bindSig and no interview, and this function resolved it
+  // to a grantee, so a key that nothing had proved was one step from a permit.
+  const att = attestation(record);
+  if (!att.ok) {
+    return {
+      ok: false,
+      reason: 'unattested_grantee',
+      attestation: att.reason,
+      hint: 'This grant names a key that no stored signature covers, so nothing shows the applicant holds it. Refusing is not revoking: whoever holds the key can prove it — bind, or a signed interview — and this same record resolves again. A record that nothing can attest to never resolves, and that asymmetry is the point.',
+    };
   }
   return { ok: true, grantee: record.grantee };
 }
@@ -115,6 +129,17 @@ export function admissionFromVerdict({ verdict, bind, operatorKeys } = {}) {
       requestId: verdict.requestId,
       operator: verdict.by,
       via: 'relay',
+      // THE PROOF, not just the verdict it produced. The bind above was verified cryptographically, and
+      // without these three fields that verification leaves no trace: no later reader -- verify-store,
+      // the permit seam, an auditor -- can re-derive what was checked, so the record is reduced to a
+      // claim. Measured, not feared: with the proof dropped, the permit seam refused this function's
+      // OWN output with 'unattested_grantee'. `boundVia` and `relayRequestId` say which bytes to
+      // re-derive (a relay binding is signed over the requestId, not over the local record id), and
+      // `bindSig` is the evidence itself. This is bind()'s rule applied here: keep the proof, not just
+      // the verdict, or `agentId` becomes a field a later reader has to take on trust.
+      boundVia: 'relay',
+      relayRequestId: bind.requestId,
+      bindSig: bind.sig,
     },
   };
 }

@@ -129,21 +129,26 @@ export function attestation(rec = {}) {
   if (boundVia === 'relay' && !relayReq) return { ok: false, reason: 'relay_bind_without_request_id' };
 
   if (typeof rec.bindSig === 'string' && rec.bindSig) {
-    const bytes = boundVia === 'relay'
-      ? relayBindBytes({ requestId: relayReq, agentId: rec.agentId })
-      : bindBytes({ id: rec.id, agentId: rec.agentId });
-    try { if (verify(rec.agentId, bytes, rec.bindSig) === true) return { ok: true, via: `${boundVia}-bind` }; }
-    catch { /* the interview may still attest this key; fall through rather than decide here */ }
+    // The byte derivation is INSIDE the try deliberately: it throws on a malformed record (a missing
+    // id, a requestId that is not a string), and malformed input has to come back as "not attested"
+    // rather than as an exception thrown at whoever is deciding whether to grant authority.
+    try {
+      const bytes = boundVia === 'relay'
+        ? relayBindBytes({ requestId: relayReq, agentId: rec.agentId })
+        : bindBytes({ id: rec.id, agentId: rec.agentId });
+      if (verify(rec.agentId, bytes, rec.bindSig) === true) return { ok: true, via: `${boundVia}-bind` };
+    } catch { /* the interview may still attest this key; fall through rather than decide here */ }
   }
 
   const iv = rec.interview;
   if (iv && typeof iv.statement === 'string' && typeof iv.sig === 'string' && iv.sig) {
     if (ivVia !== 'relay' || relayReq) {
-      const bytes = ivVia === 'relay'
-        ? relayInterviewBytes({ requestId: relayReq, agentId: rec.agentId, statement: iv.statement })
-        : interviewBytes({ id: rec.id, agentId: rec.agentId, statement: iv.statement });
-      try { if (verify(rec.agentId, bytes, iv.sig) === true) return { ok: true, via: `${ivVia}-interview` }; }
-      catch { /* nothing attests this key; report that below */ }
+      try {
+        const bytes = ivVia === 'relay'
+          ? relayInterviewBytes({ requestId: relayReq, agentId: rec.agentId, statement: iv.statement })
+          : interviewBytes({ id: rec.id, agentId: rec.agentId, statement: iv.statement });
+        if (verify(rec.agentId, bytes, iv.sig) === true) return { ok: true, via: `${ivVia}-interview` };
+      } catch { /* nothing attests this key; report that below */ }
     }
   }
 
