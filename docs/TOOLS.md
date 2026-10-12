@@ -30,7 +30,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `challenge-issue.mjs` | yes | YES | - | 110 | Issue ONE admission challenge to a joining key, as a separate process, and write out the file |
 | `challenge-score.mjs` | yes | - | - | 119 | Score a joining agent's answers, and report the two things separately, because conflating them |
 | `cost-model.mjs` | yes | - | yes | 308 | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
-| `deploy-stick.mjs` | yes | YES | yes | 487 | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
+| `deploy-stick.mjs` | yes | YES | yes | 488 | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
 | `embed-spec.mjs` | yes | YES | - | 123 | embed-spec.mjs — put the frozen specification on the wire, byte for byte. |
 | `feed-provenance.mjs` | yes | - | - | 142 | tools/feed-provenance.mjs — WHO is behind the keys in a relay feed? |
 | `join-apply.mjs` | yes | YES | yes | 314 | JOIN-APPLY — the JOINER's half of the Agent Commons admission gate, over the public relay. |

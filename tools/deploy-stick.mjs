@@ -72,7 +72,6 @@ import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, readFileSyn
 import { join, resolve, dirname, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -379,48 +378,43 @@ if (!pre.ok) {
 // --- 3. START IT. This is the check that can actually fail ---------------------
 console.log('');
 console.log('--- starting the DEPLOYED console from the stick ---');
-const child = spawn(process.execPath, [join(STICK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser',
-  ...(TARGET_IS_STICK ? [] : ['--allow-fixed-disk'])], {
-  cwd: join(STICK, 'console'), stdio: ['ignore', 'pipe', 'pipe'],
-});
-let out = '', err = '', exited = null;
-child.stdout.on('data', (c) => { out += String(c); });
-child.stderr.on('data', (c) => { err += String(c); });
-child.on('exit', (code) => { exited = code; });
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const cleanup = () => { try { child.kill(); } catch { /* already gone */ } };
-process.on('exit', cleanup);
-
-await sleep(4000);
-
-if (exited !== null) {
-  // Distinguish the media gate working from a genuinely broken deployment. On a fixed-disk target
-  // the gate firing is EXPECTED and is already accounted for above; if it fires anyway, the reason
-  // is worth stating rather than reporting as "the console exited".
-  if (/REFUSING TO START/.test(out + err)) {
+// Through tools/console-runner.mjs rather than a bare spawn. The runner pre-flights the port -- it
+// REFUSES one that is already served and NAMES the holder -- takes an attributed lock, waits for the
+// token, and can PROVE the port was released afterwards. A bare spawn could do none of those: on
+// Windows two processes can hold one port, so an unguarded run would talk to a squatter's console
+// and report it as this deployment, and nothing would show a listener was left behind. That is not
+// hypothetical -- a console held 127.0.0.1:7788 for 7h19m while every check reported healthy.
+const { startConsole, stopAndVerify } = await import('./console-runner.mjs');
+let live = null;
+try {
+  live = await startConsole({
+    app: join(STICK, 'console', 'app.mjs'),
+    port: PORT,
+    args: ['--no-browser', ...(TARGET_IS_STICK ? [] : ['--allow-fixed-disk'])],
+    cwd: join(STICK, 'console'),
+    tool: 'deploy-stick.mjs',
+    readyTimeoutMs: 12000,
+  });
+} catch (e) {
+  const msg = String((e && e.message) || e);
+  // The media gate working must stay distinguishable from a genuinely broken deployment; the runner
+  // throws both for "it exited before printing a token" and for "that port is already taken".
+  if (/REFUSING TO START/.test(msg)) {
     bad('the deployed console refused to start (media gate) even though --allow-fixed-disk was passed');
   } else {
-    bad('the deployed console EXITED immediately (code ' + exited + ')');
+    bad('the deployed console did not come up: ' + msg.split('\n')[0]);
   }
-  const firstLines = (err || out).split('\n').filter(Boolean).slice(0, 8);
-  for (const l of firstLines) console.log('       | ' + l);
-} else {
-  ok('the deployed console is still running after 4s (it did not crash on startup)');
+  for (const l of msg.split('\n').filter(Boolean).slice(0, 8)) console.log('       | ' + l);
+}
 
-  // The console prints its one-time URL containing the per-run token; without it every route
-  // answers 401, which is the CSRF defence and must stay closed.
-  const tokenMatch = /\?t=([A-Za-z0-9_-]{10,})/.exec(out);
-  const TOKEN = tokenMatch ? tokenMatch[1] : null;
+if (live) {
+  ok('the deployed console came up and is running (pid ' + live.child.pid + ')');
+  // The runner returns a handle only once the console has PRINTED ITS TOKEN; without that token
+  // every route answers 401, which is the CSRF defence and must stay closed.
+  ok('the console issued a per-run token');
 
-  if (!TOKEN) {
-    bad('the console never printed a per-run token — it may have started but not be serving');
-    console.log('       | ' + (out || err).split('\n').filter(Boolean).slice(0, 6).join('\n       | '));
-  } else {
-    ok('the console issued a per-run token');
-  }
-
-  const base = 'http://127.0.0.1:' + PORT;
+  const base = live.base;
+  const TOKEN = live.token;
   try {
     // 1. The gate is CLOSED without the token. This is the correct behaviour, not a failure —
     //    an earlier version of this script asserted 200 here and reported the gate as "open"
@@ -470,7 +464,14 @@ if (exited !== null) {
   } catch (e) {
     bad('could not reach the deployed console over HTTP: ' + e.message);
   }
-  cleanup();
+  // Stop it -- and PROVE the port was released. A run that leaves a listener behind is the failure
+  // this file was taught to report, not a detail to skip on the way out.
+  try {
+    await stopAndVerify(live);
+    ok('the console was stopped and port ' + PORT + ' is free again');
+  } catch (e) {
+    bad('a console is STILL listening on port ' + PORT + ' after this run: ' + String((e && e.message) || e));
+  }
 }
 
 console.log('');

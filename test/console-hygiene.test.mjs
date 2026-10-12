@@ -158,14 +158,14 @@ setInterval(() => {}, 1000);
     .map((f) => 'tools/' + f)
     .sort();
 
-  // Converted: these two are the ceremony pair, both of which now take the lock and pre-flight the port.
-  const USES_RUNNER = ['tools/admission-ceremony.mjs', 'tools/ceremony-live-trial.mjs'];
+  // Converted: both ceremony tools, and the post-deploy battery -- each takes the lock, pre-flights
+  // the port and can prove the release.
+  const USES_RUNNER = ['tools/admission-ceremony.mjs', 'tools/ceremony-live-trial.mjs', 'tools/deploy-stick.mjs'];
   // Declared debt, each with the reason it is not converted yet. Not a compliment -- a census entry.
   const DEBT = new Map([
     ['tools/binding-live-probe.mjs', 'kills in a finally, but no port pre-flight and no proof of release'],
     ['tools/bridge-trial.mjs', 'kills in a finally, but no port pre-flight and no proof of release'],
     ['tools/console-relay-trial.mjs', 'kills its child with no finally, so a throw between spawn and kill leaks it'],
-    ['tools/deploy-stick.mjs', 'the post-deploy battery; kills after its checks, no finally, port not pre-flighted'],
     ['tools/permit-seam-probe.mjs', 'boots a COPY of the console in .tmp, not the deployment; still unguarded'],
     ['tools/relay-actions-live.mjs', 'kills with no finally; port not pre-flighted'],
   ]);
