@@ -755,12 +755,27 @@ async function loadRelayQueue() {
   try {
     const data = await api("/api/relay/queue");
     const rows = Array.isArray(data.waiting) ? data.waiting : [];
+    // `counts` is the new, unambiguous shape; the top-level `real`/`count` are still honoured so a
+    // caller sending the older shape reports its real count instead of silently reporting ZERO. Reading
+    // only the new field made this panel announce "0 need a human" for a queue it had just been told
+    // held a real applicant -- a failure the panel's own tests caught the moment they were run.
+    const c = data.counts || {};
+    const waitingCount = c.waiting ?? data.count ?? rows.length;
+    const realCount = c.real ?? data.real ?? 0;
+    const resolvedCount = c.resolved ?? 0;
+    const unknownCount = c.unknown ?? 0;
     if (!rows.length) {
       status.textContent = "Nobody is waiting at the relay right now.";
       return;
     }
-    status.textContent = rows.length + " waiting — " + (data.real || 0)
-      + " need a human to look at them. Relay: " + data.relay;
+    // The headline counts only rows that are STILL UNDECIDED. The relay's list is its memory of every
+    // request it still holds -- not the same thing -- and reporting that memory as a queue is how this
+    // panel came to say "22 waiting" when 5 were waiting.
+    status.textContent = waitingCount + " waiting — " + realCount
+      + " need a human to look at them."
+      + (resolvedCount ? "  " + resolvedCount + " already decided (listed below, not counted)." : "")
+      + (unknownCount ? "  " + unknownCount + " could NOT be checked." : "")
+      + "  Relay: " + data.relay;
     renderRelayQueue(rows);
   } catch (err) {
     // Never report an unreachable relay as an empty queue. "Cannot see" and "nobody is there" are
@@ -770,25 +785,45 @@ async function loadRelayQueue() {
 }
 
 function renderRelayQueue(rows) {
-  // REAL rows first. The entire point of this panel is that a human never has to scroll past the
-  // test harness's own leavings to find an applicant.
-  const ordered = [...rows].sort((a, b) => (a.kind === "real" ? 0 : 1) - (b.kind === "real" ? 0 : 1));
+  // REAL rows first, then undecided before decided, then the ones that could not be checked. The entire
+  // point of this panel is that a human never has to scroll past the test harness's own leavings -- nor
+  // past handshakes that were finished hours ago -- to find an applicant.
+  const rank = (r) => {
+    const st = (r.resolution || {}).state;
+    if (st === "resolved") return 2;
+    if (st === "unknown") return 3;
+    return r.kind === "real" ? 0 : 1;
+  };
+  const ordered = [...rows].sort((a, b) => rank(a) - rank(b));
   const list = $("relay-list");
   for (const r of ordered) {
+    const res = r.resolution || { state: "unknown", why: "the console reported no resolution" };
+    const decided = res.state === "resolved";
     const box = el("div", "kv");
-    box.style.borderLeft = r.kind === "real" ? "4px solid var(--accent)" : "4px solid var(--line)";
+    box.style.borderLeft = decided ? "4px solid var(--line)"
+      : r.kind === "real" ? "4px solid var(--accent)" : "4px solid var(--line)";
     box.style.paddingLeft = "8px";
     box.style.marginBottom = "8px";
-    box.append(el("div", null, (r.kind === "real" ? "NEEDS YOUR DECISION" : "trial debris")
+    if (decided) box.style.opacity = "0.65";
+    box.append(el("div", null, (decided ? "ALREADY DECIDED: " + (res.decision || "?")
+      : r.kind === "real" ? "NEEDS YOUR DECISION" : "trial debris")
       + "  " + (r.short || r.requestId || "?")));
     box.append(el("div", null, "note: " + (r.note ? r.note : "(none)")));
     box.append(el("div", null, r.why + " · stage: " + (r.stage || "?")
-      + (r.verdict ? " · test: " + r.verdict : "")));
+      + (r.verdict ? " · test: " + r.verdict : "")
+      + (decided ? " · a published verdict is terminal for binding" : "")
+      + (res.state === "unknown" ? " · resolution NOT checked: " + (res.why || "?") : "")));
     // The steps this row is eligible for. The server still owns the ORDER -- it refuses an
     // out-of-turn step with a named code -- so the page offers the actions and reports what
     // happened rather than modelling the state machine a second time.
+    //
+    // A DECIDED row gets NO actions. The relay's own words are that an applicant "can never bind again
+    // after a verdict", so every button here would be an invitation to a refusal -- and the operator,
+    // having already decided, should not be invited to decide again.
     const actions = el("div", "row");
-    if (!r.localId) {
+    if (decided) {
+      actions.append(el("div", null, "Nothing to do: this handshake is finished."));
+    } else if (!r.localId) {
       const b = el("button", null, "Issue challenge");
       b.addEventListener("click", () => relayAction("challenge", r));
       actions.append(b);

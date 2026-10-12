@@ -37,7 +37,12 @@ test('the console server annotates the queue with that same classifier', () => {
   assert.match(app, /import \{[^}]*classifyNote[^}]*\} from '\.\/src\/queue-classify\.mjs'/,
     'the console server does not import the shared classifier');
   assert.match(app, /\.\.\.classifyNote\(/, 'the relay queue route does not annotate rows with kind/why');
-  assert.match(app, /real: waiting\.filter\(/, 'the route does not report its own real count');
+  // The route must COUNT the real rows itself, from the row list, rather than leaving the page to
+  // derive it. Pinned as an intent rather than a spelling: the row list was renamed (waiting -> rows)
+  // when the route began joining each row against the relay's published verdict, and a test that
+  // insists on the old variable name fails on a refactor that preserved the behaviour exactly.
+  assert.match(app, /real:\s*(waiting|rows)\.filter\(/,
+    'the route does not report its own real count');
 });
 
 // --- 2. the rules, including the deliberate asymmetry --------------------------------------------

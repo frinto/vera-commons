@@ -385,6 +385,26 @@ async function relayFetch(path, { method = 'GET', body, secret } = {}) {
   return { status: res.status, payload };
 }
 
+// Ask the relay whether a request has already been DECIDED. The verdict endpoint is public and needs no
+// secret, so this is the same question any stranger can ask -- there is no privileged view here.
+//
+// Three states, and the third is the point: a lookup that FAILED is `unknown`, never `waiting`. The page
+// already refuses to conflate "cannot see" with "nobody is there" when the relay is unreachable; the same
+// rule has to hold one level down, or a flaky lookup silently re-inflates the queue with rows that may
+// have been decided days ago.
+async function resolutionOf(requestId) {
+  try {
+    const v = await relayFetch(`/admission/verdict?requestId=${encodeURIComponent(requestId)}`);
+    if (v.status === 200) {
+      return { state: 'resolved', decision: v.payload?.decision ?? null, at: v.payload?.at ?? null };
+    }
+    if (v.status === 404) return { state: 'waiting' };
+    return { state: 'unknown', why: `the relay answered ${v.status}` };
+  } catch (err) {
+    return { state: 'unknown', why: String(err?.message ?? err) };
+  }
+}
+
 // The relay has TWO ways of saying "I have nothing for that requestId", and they mean different
 // things. Measured on the live relay (tools/relay-actions-live.mjs):
 //
@@ -978,7 +998,15 @@ const server = createServer(async (req, res) => {
           return json(res, 502, { error: `The relay answered ${r.status} for the queue.`, code: 'RELAY_ERROR' });
         }
         const known = new Map((await lib.list()).map((row) => [row.joinKey, row]));
-        const waiting = (r.payload?.requests ?? []).map((q) => {
+        // `/admission/requests` is NOT a waiting list. It is every request the relay still REMEMBERS
+        // (the request key carries a 24-hour TTL), including handshakes that were decided hours ago.
+        // Measured live 2026-10-12: 22 rows listed, 17 already carrying a published verdict -- so this
+        // panel said "22 waiting" when 5 were waiting.
+        //
+        // A decided handshake shown as pending is worse than a missing row. It buries the one applicant
+        // who really is waiting, and it invites the operator to redo a decision already made and
+        // published under their own signature. So each row is joined against the public verdict.
+        const rows = await Promise.all((r.payload?.requests ?? []).map(async (q) => {
           const local = known.get(q.joinKey) ?? null;
           return {
             requestId: q.requestId,
@@ -990,6 +1018,7 @@ const server = createServer(async (req, res) => {
             stage: local ? local.status : 'new',
             localId: local ? local.id : null,
             verdict: local ? admissionVerdict(local.verdict) : null,
+            resolution: await resolutionOf(q.requestId),
             // The SAME classifier the review tool uses, so the console and the tool cannot disagree
             // about who is an applicant. Computed HERE and sent to the page rather than recomputed
             // there: the page must not own a second copy of the convention, because the two copies
@@ -997,14 +1026,19 @@ const server = createServer(async (req, res) => {
             // silently never admitted.
             ...classifyNote(q.note ?? null),
           };
-        });
-        return json(res, 200, {
-          waiting,
-          relay: RELAY,
-          count: waiting.length,
-          // Counted here so the page never has to re-derive the rule from the rows it was given.
-          real: waiting.filter((w) => w.kind !== TRIAL).length,
-        });
+        }));
+        const waiting = rows;
+        // Counted here so the page never has to re-derive the rules from the rows it was given. `real`
+        // counts only requests that are BOTH unclassified debris-free AND still undecided: a decided
+        // real applicant needs no human, and saying otherwise is the same overstatement one level up.
+        const counts = {
+          listed: rows.length,
+          waiting: rows.filter((x) => x.resolution.state === 'waiting').length,
+          resolved: rows.filter((x) => x.resolution.state === 'resolved').length,
+          unknown: rows.filter((x) => x.resolution.state === 'unknown').length,
+          real: rows.filter((x) => x.kind !== TRIAL && x.resolution.state === 'waiting').length,
+        };
+        return json(res, 200, { waiting, counts, relay: RELAY, count: counts.waiting, real: counts.real });
       }
 
       // Mint a challenge here, then publish it — WITH the taxonomy it is scored against.

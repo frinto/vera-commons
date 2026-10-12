@@ -140,10 +140,44 @@ if (q.status !== 200) {
   const rows = Array.isArray(q.body.waiting) ? q.body.waiting : [];
   const unclassified = rows.filter((r) => r.kind !== 'real' && r.kind !== 'trial');
   if (unclassified.length) bad(`${unclassified.length} row(s) reached the page with no kind`);
-  else ok(`the live relay queue answered: ${q.body.count} waiting, ${q.body.real} need a human`);
+  else ok(`the live relay queue answered: ${q.body.counts?.waiting ?? '?'} waiting, ${q.body.real} need a human`);
   const noWhy = rows.filter((r) => !r.why);
   if (noWhy.length) bad(`${noWhy.length} row(s) carry no reason`);
   else ok('every row carries the server-side reason');
+
+  // The relay's list is its MEMORY of every request it still holds (24-hour TTL), not a waiting list.
+  // Measured 2026-10-12: 22 listed, 17 already decided, and this panel said "22 waiting". So the counts
+  // must add up, and the label must be checked against the relay rather than taken on trust.
+  const c = q.body.counts;
+  if (!c || c.listed !== rows.length || c.waiting + c.resolved + c.unknown !== c.listed) {
+    bad(`counts do not add up: ${JSON.stringify(c)} against ${rows.length} row(s)`);
+  } else {
+    ok(`counts add up: ${c.listed} listed = ${c.waiting} waiting + ${c.resolved} decided + ${c.unknown} unchecked`);
+  }
+  if (rows.some((r) => !r.resolution || !['waiting', 'resolved', 'unknown'].includes(r.resolution.state))) {
+    bad('a row reached the page with no resolution state -- the page cannot tell decided from pending');
+  } else {
+    ok('every row carries a resolution state from the known set');
+  }
+  // THE FALSIFIABLE PART. The console labels each row; the relay is asked independently, in this file,
+  // and the two must agree on every row. A self-reported label that nothing cross-checks is how the
+  // panel came to call decided handshakes "waiting" in the first place.
+  const disagreements = [];
+  for (const r of rows) {
+    let relaySays;
+    try {
+      // Asked of the RELAY directly, not of the console: a console that cross-checked itself would
+      // agree with itself no matter what it said.
+      const v = await fetch(`${RELAY}/admission/verdict?requestId=${encodeURIComponent(r.requestId)}`,
+        { signal: AbortSignal.timeout(15000) });
+      relaySays = v.status === 200 ? 'resolved' : v.status === 404 ? 'waiting' : 'unknown';
+    } catch { relaySays = 'unknown'; }
+    if (r.resolution.state !== relaySays) {
+      disagreements.push(`${r.short}: console says ${r.resolution.state}, relay says ${relaySays}`);
+    }
+  }
+  if (disagreements.length) bad(`${disagreements.length} row(s) mislabelled: ` + disagreements.slice(0, 3).join(' | '));
+  else ok(`the relay itself confirms every one of the ${rows.length} label(s) (no row called "waiting" that is already decided)`);
 }
 
 // --- probes: a CORRECT server refuses each of these, by name -----------------------------------
