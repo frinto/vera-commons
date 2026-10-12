@@ -9,10 +9,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node test/identity.test.mjs && node test/message.test.mjs && node test/store.test.mjs && node test/policy.test.mjs && node test/permit.test.mjs && node test/revocation-risk.test.mjs && node test/permit-verdict-bridge.test.mjs && node test/agency.test.mjs && node test/admission.test.mjs && node test/census.test.mjs && node test/archive.test.mjs && node test/transport-archive.test.mjs && node test/retract.test.mjs && node test/retract-inbox.test.mjs && node test/seq-monotonic.test.mjs && node test/trust-post.test.mjs && node test/worker.test.mjs && node test/admission-queue.test.mjs && node test/admission-binding.test.mjs && node test/admission-relay.test.mjs && node test/permit-admission.test.mjs && node test/trust-operator.test.mjs && node test/discovery.test.mjs && node test/standalone.test.mjs && node test/e2e.test.mjs && node tools/verify-spec-freeze.mjs && node tools/cost-model.mjs --self-test && node tools/join-doc-drift.test.mjs --local",
+    "test": "node test/identity.test.mjs && node test/message.test.mjs && node test/store.test.mjs && node test/policy.test.mjs && node test/permit.test.mjs && node test/revocation-risk.test.mjs && node test/permit-verdict-bridge.test.mjs && node test/agency.test.mjs && node test/admission.test.mjs && node test/census.test.mjs && node test/archive.test.mjs && node test/transport-archive.test.mjs && node test/retract.test.mjs && node test/retract-inbox.test.mjs && node test/seq-monotonic.test.mjs && node test/trust-post.test.mjs && node test/worker.test.mjs && node test/admission-queue.test.mjs && node test/admission-binding.test.mjs && node test/admission-relay.test.mjs && node test/permit-admission.test.mjs && node test/trust-operator.test.mjs && node test/discovery.test.mjs && node test/standalone.test.mjs && node test/e2e.test.mjs && node tools/verify-spec-freeze.mjs && node tools/cost-model.mjs --self-test && node tools/join-doc-drift.test.mjs --local && node tools/mcp-trial.mjs",
     "demo": "node src/cli.mjs demo",
     "trial:live": "node tools/live-remote-trial.mjs",
     "trial:door": "node tools/join-doc-drift.test.mjs",
+    "trial:mcp": "node tools/mcp-trial.mjs",
+    "trial:mcp:live": "node tools/mcp-trial.mjs --live",
+    "mcp": "node tools/mcp-server.mjs",
     "trial:joiner": "node tools/joiner-path-trial.mjs",
     "trial:operator": "node tools/operator-command-trial.mjs",
     "serve": "node src/server.mjs",
