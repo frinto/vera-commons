@@ -96,9 +96,47 @@ function copyTree(from, to) {
     else copyFileSync(s, d);
   }
 }
+copyTree(join(ROOT, 'console'), CONSOLE);
+// The console imports './src/...', and in the repo that directory does not exist: it is built at
+// DEPLOY time by tools/deploy-stick.mjs, which copies repo src/ into both <stick>/src and
+// <stick>/console/src. This layout mirrors that, so it exercises the same import graph the stick does.
 copyTree(join(ROOT, 'src'), join(CONSOLE, 'src'));
-copyTree(join(ROOT, 'console', 'public'), join(CONSOLE, 'public'));
-copyFileSync(join(ROOT, 'console', 'app.mjs'), join(CONSOLE, 'app.mjs'));
+
+// Only the MODULES matter for the import graph; README.txt and START-HERE.cmd travel along harmlessly.
+const consoleModules = readdirSync(join(ROOT, 'console')).filter((f) => f.endsWith('.mjs'));
+
+// A layout that cannot be imported is not a layout, and the way this broke is worth stating: the copy
+// used to name app.mjs by hand, so when the console gained media.mjs the layout became unimportable,
+// the child died of ERR_MODULE_NOT_FOUND, and the harness reported NOTHING -- 58 checks silently
+// became zero, behind a 20-second token wait and a stack trace that reads like an environment
+// problem. A verification tool that reports nothing is indistinguishable from one that found nothing.
+// So: copy the whole directory (one rule, nothing to rot) and then PROVE the graph resolves, loudly,
+// before a single check is allowed to be skipped.
+function walkMjs(dir) {
+  const acc = [];
+  for (const e of readdirSync(dir)) {
+    const p = join(dir, e);
+    if (statSync(p).isDirectory()) acc.push(...walkMjs(p));
+    else if (p.endsWith('.mjs')) acc.push(p);
+  }
+  return acc;
+}
+function assertLayoutComplete() {
+  const modules = walkMjs(CONSOLE);
+  const missing = [];
+  for (const m of modules) {
+    for (const hit of readFileSync(m, 'utf8').matchAll(/(?:\bfrom\s*|import\s*\(\s*)'(\.[^']+)'/g)) {
+      const target = join(dirname(m), hit[1]);
+      if (!existsSync(target)) missing.push(m.slice(LAYOUT.length + 1) + ' -> ' + hit[1]);
+    }
+  }
+  if (missing.length) {
+    throw new Error('the layout is INCOMPLETE — these imports resolve to nothing: ' + [...new Set(missing)].join('; '));
+  }
+  console.log('layout import check: all ' + modules.length + ' module(s) resolve their relative imports');
+}
+assertLayoutComplete();
+console.log('console modules copied: ' + consoleModules.join(', '));
 
 // The verifier secret and the relay operator secret are READ-ONLY material this trial needs in
 // order to score a challenge and to authenticate to the relay. Neither is ever published.
@@ -184,7 +222,13 @@ console.log('actor : trial identity ' + trial.agentId.slice(0, 10) + '…');
 console.log('');
 
 // --- 2. start the console, capture its per-run token -------------------------
-const child = spawn(process.execPath, [join(CONSOLE, 'app.mjs'), '--port', String(PORT), '--relay', RELAY, '--no-browser'], {
+const child = spawn(process.execPath, [join(CONSOLE, 'app.mjs'), '--port', String(PORT), '--relay', RELAY, '--no-browser',
+  // The layout is a temp directory on a fixed disk by design, so the media gate must be relaxed or the
+  // console will not start at all (it refuses, and says so -- see console/media.mjs). That gate exists
+  // to stop a COPY of the console being mistaken for the real one. What makes this layout not a copy
+  // is its own key, its own trust root, and the deliberate absence of the human's identity (asserted
+  // above) -- not the drive it happens to sit on.
+  '--allow-fixed-disk'], {
   cwd: CONSOLE, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let out = '';
@@ -278,7 +322,15 @@ const mine = (r.json?.waiting || []).find((w) => w.requestId === requestId);
 check('THE CONSOLE NOW SEES THE REMOTE JOINER (the whole point of the bridge)', Boolean(mine),
   'queue held ' + JSON.stringify((r.json?.waiting || []).map((w) => w.short)));
 check('a joiner never seen here is labelled "new"', mine?.stage === 'new', 'got ' + mine?.stage);
-check('the console shows the joiner\'s note as inert data', mine?.note === 'console bridge trial');
+// VERBATIM, marker included. This assertion used to expect the '[trial] ' prefix stripped, which
+// contradicts the marker's whole purpose: src/trial.mjs#isMarked DETECTS the marker in the body
+// ("true only when the marker leads the body"), and a detector over a body that storage had already
+// rewritten could never fire. A console that edits a joiner's words to make its own display tidier
+// is a console that cannot be trusted with anyone's words.
+check('the console shows the joiner\'s note VERBATIM, marker included (inert data, never rewritten)',
+  mine?.note === '[trial] console bridge trial', String(mine?.note));
+check('and BECAUSE the marker leads it, the classifier files it as trial debris, not a real applicant',
+  mine?.kind === 'trial', String(mine?.kind));
 
 // --- 4. the admin issues a challenge from the console -----------------------
 r = await api('/api/relay/challenge', { method: 'POST', body: { requestId } });
@@ -475,8 +527,12 @@ check('★ the withdrawn count rose by one', after.counts.withdrawn >= 1);
 const w = after.withdrawn.find((m) => m.id === victimId);
 check('the withdrawal records WHO did it', w?.retraction?.role === 'admin', String(w?.retraction?.role));
 check('and WHY, in the operator\'s own words', w?.retraction?.reason === 'testing the tombstone', String(w?.retraction?.reason));
-check('the body is still readable to anyone who opens the disclosure',
-  w?.body === 'this line will be withdrawn', String(w?.body));
+check('the body is still readable, VERBATIM, to anyone who opens the disclosure',
+  w?.body === '[trial] this line will be withdrawn', String(w?.body));
+// The marker has to survive the withdrawal too, or a withdrawn trial line becomes indistinguishable
+// from a withdrawn real one -- which is the exact confusion the marker exists to prevent.
+check('and it still LEADS with the marker, so a withdrawn trial line stays tellable',
+  /^\s*\[trial\]/i.test(String(w?.body)), String(w?.body));
 
 console.log('');
 console.log('--- a withdrawal is not an erasure, and cannot be used as one ---');
