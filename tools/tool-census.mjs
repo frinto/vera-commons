@@ -37,9 +37,98 @@ function purposeOf(src) {
   return null;
 }
 
+// Tokens that mean "this line hands a file to something that will run it". `(spawn|exec)\w*\(` and not
+// a list of exact names: the list version spelled out spawn/execFile/execSync/exec, and `execFileSync`
+// matches NONE of them (`execFile` is followed by `Sync`), so a tool invoked with the most common call
+// in this repository was reported as invoked by nothing.
+const SPAWNER = /(spawn|exec)\w*\s*\(/;
+const INTERPRETER = /\b(node|npx|powershell|pwsh|bash|sh|cmd)\b[^\n]*tools[\\/]/i;
+const IMPORT_OF_TOOLS = /^\s*(import|const|let|var)\b.*(from|require)\s*\(?\s*['"][^'"]*tools[\\/]/;
+// How far apart a call and the path it passes may sit: a formatted multi-line call puts them on
+// different lines, and a variable assignment can put them in different statements.
+const WINDOW = 8;
+const isCommentLine = (l) => /^\s*(\/\/|#|\*|\/\*)/.test(l);
+
+/**
+ * Does this file's CODE invoke `name`? Exported because a detector whose only inputs are this
+ * repository's own files cannot be shown failing, and an assertion that cannot fail is not evidence.
+ *
+ * FIRST, what kind of file is asking. A markdown document that says `node tools/x.mjs` documents an
+ * invocation; it does not perform one. Letting documents count wired tools from this file's own
+ * generated document, and made two trial tools look wired because a decision note listed them in a
+ * table -- the "a mention is not an invocation" error this file exists to avoid, arriving from a new
+ * direction. Only code and shell files can invoke anything.
+ *
+ * Then, four shapes count:
+ *   1. the name on a line that is itself a spawn call, or an interpreter call (`node tools/x.mjs`) --
+ *      which is how every shell caller works, and which contains no spawn() at all
+ *   2. an import of ../tools/<name>
+ *   3. the QUOTED name within WINDOW lines of a spawn call, because a formatted call reads
+ *        execFileSync(process.execPath, [
+ *          join(HERE, 'verify-admission.mjs'),
+ *      and puts the call and the path on different lines
+ *   4. the quoted name bound to a variable that a spawn call then passes, because a test holds its
+ *      tool in `const TOOL = join(HERE, '../tools/verify-seed.mjs')` and calls `[TOOL, ...args]`
+ *
+ * Shapes 3 and 4 were missing, and their absence made this census report tools that run on every
+ * `npm test` as "nothing invokes it" -- a confident falsehood about the exact question the document
+ * exists to answer. A name in a comment, in prose, or in a file that contains no call at all, is not
+ * an invocation: counting bare mentions once made a tool look wired while nothing ran it.
+ */
+export function wiresTool(text, name, file = 'inline.mjs') {
+  const kind = /\.(mjs|js|cjs|ts)$/i.test(file) ? 'code'
+    : /\.(ps1|psm1|sh|cmd|bat)$/i.test(file) ? 'shell' : 'doc';
+  if (kind === 'doc') return false;
+  const canSpawn = kind === 'code';
+  const spawnish = (l) => (canSpawn && SPAWNER.test(l)) || INTERPRETER.test(l);
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const code = text.split(/\r?\n/).filter(l => !isCommentLine(l));
+  // An IMPORT is enough on its own. A test that imports a tool to call its functions invokes it just
+  // as much as one that spawns it, and gating this on a spawn token silently UNWIRED two tools whose
+  // tests import them (admission-queue-review.mjs, stick-scan.mjs) -- a false "nothing runs this"
+  // introduced in the same edit that removed a false "something runs this".
+  if (!code.some(spawnish) && !code.some(l => IMPORT_OF_TOOLS.test(l))) return false;
+  const quoted = new RegExp(`['"\`][^'"\`]*${escaped}`);
+  for (let i = 0; i < code.length; i++) {
+    const line = code[i];
+    if (!line.includes(name)) continue;
+    if (spawnish(line) || IMPORT_OF_TOOLS.test(line)) return true;
+    if (!quoted.test(line)) continue;                      // a word in prose is not a path
+    const lo = Math.max(0, i - WINDOW), hi = Math.min(code.length - 1, i + WINDOW);
+    for (let j = lo; j <= hi; j++) {
+      if (j !== i && spawnish(code[j])) return true;
+    }
+    const bind = line.match(/^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)/);
+    if (bind) {
+      const used = new RegExp(`\\b${bind[1]}\\b`);
+      if (canSpawn && code.some((l, j) => j !== i && SPAWNER.test(l) && used.test(l))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The trial registry is a real caller whose path is COMPUTED: tools/trial-all.mjs holds
+ * `{ id, file: 'tools/x.mjs' }` entries and runs each one with `spawnSync(process.execPath, [abs, ...])`,
+ * where `abs` is built from the entry. No rule that needs the path and the call on one line, or even in
+ * one window, can see that -- and the registry is the project's single command for the live evidence, so
+ * a tool it lists IS invoked by something. Reporting it as "nothing runs this" is exactly the confident
+ * falsehood this census exists to prevent.
+ *
+ * Both halves are required: the entry, and the spawn call that consumes it. A document that merely lists
+ * trials wires nothing.
+ */
+export function inTrialRegistry(registryText, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return /spawnSync\s*\(/.test(registryText)
+    && new RegExp(`file:\\s*['"]tools/${escaped}['"]`).test(registryText);
+}
+
 export function buildCensus() {
   const names = readdirSync(TOOLS).filter(f => f.endsWith('.mjs')).sort();
   const pkg = readFileSync(join(ROOT, 'package.json'), 'utf8');
+  const registryPath = join(TOOLS, 'trial-all.mjs');
+  const registrySrc = existsSync(registryPath) ? readFileSync(registryPath, 'utf8') : '';
 
   // Everything a tool could be invoked from, excluding itself. node_modules/.git/.tmp are out: a
   // mention in a dependency or a scratch file is not an invocation by this project.
@@ -72,28 +161,18 @@ export function buildCensus() {
     let via = inPkg ? 'package.json' : null;
     for (const p of corpus) {
       if (p.endsWith(join('tools', name))) continue;
+      // The census's own source names every tool inside the document it emits -- including inside the
+      // regex literals that define the rule below. A document is not an invocation: without this skip,
+      // the census would claim to wire everything it merely describes.
+      if (p.endsWith(join('tools', 'tool-census.mjs'))) continue;
       const body = readFileSync(p, 'utf8');
-      if (!body.includes(name)) continue;                     // cheap reject before line scanning
-      for (const line of body.split(/\r?\n/)) {
-        if (!line.includes(name)) continue;
-        // Two ways to invoke a file: programmatically (spawn/execFile/exec), or by handing the path to
-        // an interpreter. The second is how every shell caller works -- a PowerShell line reading
-        // `node tools/verify-feed.mjs ...` contains no spawn() at all, so a rule that only looked for
-        // spawn() reported tools invoked from verify-worker-local.ps1 as never invoked.
-        // `(spawn|exec)\w*\(` and not a list of exact names. The list version spelled out spawn,
-        // execFile, execSync and exec -- and `execFileSync` matches NONE of them: `execFile` is
-        // followed by `Sync`, and `exec` is followed by `File`. So a tool invoked with the most common
-        // call in this repository was reported as invoked by nothing. Found by checking the census
-        // against a case whose answer was already known: tools/verify-relay-verdict.mjs, invoked by
-        // tools/verify-relay-verdicts.mjs two lines above.
-        const programmatic = /(spawn|exec)\w*\s*\(/.test(line);
-        const interpreted = /\b(node|npx|powershell|pwsh|bash|sh|cmd)\b[^\n]*tools[\\/]/i.test(line)
-          && !/^\s*(\/\/|#|\*)/.test(line);          // a commented-out line is not an invocation
-        if (programmatic || interpreted) { via = via ?? 'invoked'; }
-        else if (/^\s*(import|const|let|var)\b.*(from|require)\s*\(?\s*['"][^'"]*tools[\\/]/.test(line)
-          && !/^\s*(\/\/|\*)/.test(line)) { via = via ?? 'import'; }
-      }
+      if (!body.includes(name)) continue;                     // cheap reject before scanning
+      // The shape rules live in wiresTool() so a test can drive them with synthetic inputs whose
+      // answers are known. Every bug this detector has had was found that way. The path is passed so
+      // the rule can tell a caller from a document.
+      if (wiresTool(body, name, p)) via = via ?? 'invoked';
     }
+    if (inTrialRegistry(registrySrc, name)) via = via ?? 'trial registry';
     return {
       name,
       purpose: purposeOf(src),
@@ -135,9 +214,12 @@ calls a write API somewhere; \`net\` means it calls \`fetch\` somewhere. A tool 
 harmless; a tool with no flags at all can still be wrong. This generator deliberately executes nothing,
 because several entries modify state.
 
-\`wired\` means something in this repository invokes it: named in \`package.json\`, named by a file under
-\`test/\`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
-count — counting mentions that way once made a tool look wired while nothing ran it.
+\`wired\` means something in this repository invokes it: named in \`package.json\`, imported, spawned from
+\`test/\` or another source file — the call may span several lines and the path may be held in a variable
+— or listed in the trial registry \`tools/trial-all.mjs\`, which runs each entry through a computed path.
+A mention inside a comment, in prose, or in a document does **not** count: counting mentions that way
+once made a tool look wired while nothing ran it, and a usage example in a note is a human's instruction,
+not an invocation.
 
 ## Wired (${wired.length}) — something invokes it
 
@@ -150,7 +232,8 @@ ${table(unwired)}
 A tool being unwired is not automatically a defect: some are deliberate one-offs, and some are the
 only correct interface for a job a human does by hand (minting a root key, moving a block once). What
 is a defect is a tool being unwired *and unknown*. Wiring one of these means giving it a test, an npm
-script, or a caller — \`verify-admission.mjs\` and \`verify-seed.mjs\` were wired that way.
+script, or a caller — \`verify-admission.mjs\` (spawned by \`tools/verify-store.mjs\`) and
+\`verify-seed.mjs\` (spawned by \`test/verify-seed.test.mjs\`) are the worked examples.
 `;
 }
 

@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCensus, renderCensus } from '../tools/tool-census.mjs';
+import { buildCensus, renderCensus, wiresTool, inTrialRegistry } from '../tools/tool-census.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DOC = join(ROOT, 'docs', 'TOOLS.md');
@@ -117,4 +117,91 @@ test('the census itself is wired, so the document cannot be orphaned by its own 
   assert.equal(self.wired, true,
     'nothing invokes tool-census.mjs: it must be reachable from package.json or a test, or the census '
     + 'is a document nobody can reproduce');
+});
+
+test('an invocation that spans lines, or goes through a variable, is still an invocation', () => {
+  // FIFTH instance of one family. The detector required the spawn token and the file name on the SAME
+  // line, so it reported as "nothing invokes it" two tools that run on every `npm test`:
+  // verify-admission.mjs -- spawned by tools/verify-store.mjs, whose call spans two lines -- and
+  // verify-seed.mjs, spawned by test/verify-seed.test.mjs through a `const TOOL`. The dangerous
+  // direction of error is this one: the document asserted confidently that nothing ran a verifier.
+  const byName = Object.fromEntries(buildCensus().map(r => [r.name, r]));
+  for (const name of ['verify-admission.mjs', 'verify-seed.mjs']) {
+    assert.ok(byName[name], `${name} vanished from the census entirely`);
+    assert.equal(byName[name].wired, true,
+      `${name} IS invoked by this repository; reporting it unwired is a false "nothing runs this" `
+      + 'about a real verifier');
+  }
+});
+
+test('the invocation detector can say NO -- driven by synthetic sources, not by this repository', () => {
+  // A detector whose only inputs are this repository's own files cannot be shown failing, so these
+  // inputs have answers known before the detector ran. The spawn token is assembled at run time
+  // because a literal one would be read by this very detector -- and this file necessarily contains
+  // the tool names below, in the assertion messages.
+  const SPAWN = 'exec' + 'FileSync' + '(';
+  const multiLine = [
+    SPAWN + 'process.execPath, [',
+    "  join(HERE, 'verify-admission.mjs'),",
+    "  '--id', id], { stdio: 'pipe' });",
+  ].join('\n');
+  assert.equal(wiresTool(multiLine, 'verify-admission.mjs'), true,
+    'a call split across lines is an invocation -- this is tools/verify-store.mjs\'s shape');
+
+  const viaVariable = [
+    "const TOOL = join(HERE, '../tools/verify-seed.mjs');",
+    ...Array(20).fill('// filler, so the call sits far from the assignment'),
+    SPAWN + 'process.execPath, [TOOL, ...args]);',
+  ].join('\n');
+  assert.equal(wiresTool(viaVariable, 'verify-seed.mjs'), true,
+    'a path held in a variable and passed to a spawner is an invocation -- the test\'s own shape');
+
+  const commentedOut = multiLine.split('\n').map(l => '// ' + l).join('\n');
+  assert.equal(wiresTool(commentedOut, 'verify-admission.mjs'), false,
+    'a commented-out call runs nothing, however many spawn tokens its text contains');
+
+  assert.equal(wiresTool(multiLine, 'verify-admission.mjs', 'docs/DECISION-note.md'), false,
+    'a markdown document RECORDS an invocation, it does not perform one -- two trial tools were '
+    + 'briefly reported wired because a decision note listed them in a table');
+  assert.equal(wiresTool(multiLine, 'verify-admission.mjs', 'docs/TOOLS.md'), false,
+    'the generated census document must never wire the tools it describes, or every row becomes wired');
+
+  const importOnly = "import { triage } from '../tools/admission-queue-review.mjs';\nconsole.log(triage);";
+  assert.equal(wiresTool(importOnly, 'admission-queue-review.mjs', 'test/admission-queue-review.test.mjs'), true,
+    'a test that IMPORTS a tool runs its code; requiring a spawn call here unwired two real tools');
+
+  const proseOnly = "// tools/verify-admission.mjs is a real verifier\nconsole.log('see verify-admission.mjs');";
+  assert.equal(wiresTool(proseOnly, 'verify-admission.mjs'), false,
+    'a name in prose, in a file with no spawn call at all, is not an invocation');
+
+  const farMention = [
+    SPAWN + "process.execPath, ['node'], { stdio: 'pipe' });",
+    ...Array(30).fill('const filler = 1;'),
+    "console.log('verify-admission.mjs is not run from here');",
+  ].join('\n');
+  assert.equal(wiresTool(farMention, 'verify-admission.mjs'), false,
+    'a name 30 lines away from any spawn call is a mention, not an invocation');
+});
+
+test('the trial registry counts as a caller -- the entry AND the call that consumes it', () => {
+  // tools/trial-all.mjs holds `{ file: 'tools/x.mjs' }` entries and runs each one through a path built
+  // from the entry, so a listed tool IS invoked even though its path and the call never share a line.
+  // Controls use names that do not exist on disk, and the call token is assembled at run time: this
+  // file necessarily names real tools, and a literal call here would wire them from their own test.
+  const SPAWN_SYNC = 'spawn' + 'Sync';
+  const runs = `const REGISTRY = [{ id: 'x', file: 'tools/example-tool.mjs' }];\n${SPAWN_SYNC}(process.execPath, [abs]);`;
+  assert.equal(inTrialRegistry(runs, 'example-tool.mjs'), true,
+    'an entry plus the call that runs it is a caller');
+  assert.equal(inTrialRegistry(runs, 'other-tool.mjs'), false,
+    'a tool the registry does not list is not wired by it');
+  assert.equal(inTrialRegistry('| `example-tool.mjs` | a table row in a note |\n' + SPAWN_SYNC + '(process.execPath, [abs]);', 'example-tool.mjs'), false,
+    'a prose row about a trial is not a registry entry');
+  assert.equal(inTrialRegistry("const REGISTRY = [{ id: 'x', file: 'tools/example-tool.mjs' }];", 'example-tool.mjs'), false,
+    'an entry in a file that never runs anything is not a caller');
+
+  // And the real registry: a tool it lists must never be reported as unwired.
+  const byName = Object.fromEntries(buildCensus().map(r => [r.name, r]));
+  assert.equal(byName['stranger-journey.mjs']?.wired, true,
+    'stranger-journey.mjs is entry one of the trial registry; reporting it unwired is the false '
+    + '"nothing runs this" this census exists to prevent');
 });
