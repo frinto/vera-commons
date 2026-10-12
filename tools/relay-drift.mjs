@@ -11,10 +11,20 @@
 // was. A remembered limitation decays; a re-runnable check does not.
 //
 // WHAT IS COMPARED, AND WHAT IS NOT
-// The same request goes to two implementations: worker/worker.js from THIS tree (in process, on an
-// empty mock KV) and the deployed relay (over the network). Compared: the HTTP status and the
-// RESPONSE SHAPE -- every JSON path with its type -- recursively. Deliberately NOT compared: values.
-// The deployed relay holds real state and the local one holds none, so value equality would be noise.
+// The same request goes to two implementations: worker/worker.js from THIS tree (in process, on a
+// mock KV seeded with ONE fixture message) and the deployed relay (over the network). Compared: the
+// HTTP status and the RESPONSE SHAPE -- every JSON path with its type -- recursively. Deliberately
+// NOT compared: values. The deployed relay holds real state and the local one holds a fixture, so
+// value equality would be noise.
+//
+// WHY THE STORE IS SEEDED AND NOT EMPTY. An empty local store made `GET /messages` answer
+// `cursor: null` (the route returns the request's `since` when there are no messages) while the
+// relay answered `cursor: "<id>"`. That difference belonged to the FIXTURE, not to the code, and it
+// arrived in the report dressed as drift -- "SAME PATH, DIFFERENT TYPE". A drift report that cries
+// wolf on its own harness is one a reader learns to skim, and skimming costs exactly the real drift
+// this tool exists to catch. With one fixture message both sides answer the same KINDS of facts, so
+// a cursor that genuinely changed type is now reported instead of excused.
+//
 // A shape match therefore does NOT prove the deploy is current; it proves the deploy is not missing
 // (or inventing) a field or a route that this tree emits. That limit is printed, not glossed.
 //
@@ -31,6 +41,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import worker from '../worker/worker.js';
+import { messageId } from '../src/message.mjs';
 
 const DEFAULT_RELAY = process.env.COMMONS_URL || 'https://agent-commons.huyxkhoa.workers.dev';
 const DEFAULT_SECRET = process.env.AC_OPERATOR_SECRET_FILE
@@ -83,25 +94,41 @@ export function emptyArrayPaths(value, path = '$', out = []) {
   return out;
 }
 
-// A difference INSIDE an array that one side holds no entries for is not drift: the local side runs
-// on an empty mock KV BY CONSTRUCTION, so it cannot describe entry fields at all, and the deployed
-// relay's real entries then look like fields "the deploy sends extra". Counting those as drift is the
-// defect this program keeps finding -- a read whose known incompleteness is turned into a confident
+// A difference INSIDE an array that one side holds no entries for is not drift, and neither is a
+// difference inside a MESSAGE BODY.
+//
+// (a) Emptiness: a side that holds no entries cannot describe entry fields at all, and the other
+// side's real entries then look like fields it "sends extra". Counting those as drift is the defect
+// this program keeps finding -- a read whose known incompleteness is turned into a confident
 // assertion. They are reported as STATED LIMITS instead, and the honest drift signal (a field this
 // tree sends and the deploy does not) is left standing on its own.
+//
+// (b) Peer content: a message's `body` is ANY JSON value by specification
+// (spec/COMMONS-SPEC.md: "body": { "any": "JSON value" }). Its interior is therefore whatever a
+// stranger chose to send, not a wire contract -- and if it were compared key by key, this tool's
+// verdict would depend on WHICH message happened to be newest on the relay. The type of `body` is
+// still compared (string vs object IS a real difference); only its interior is a stated limit. One
+// fixture message can match an envelope; it can never match arbitrary peer content, and saying so is
+// more honest than a fixture that claims to.
+export const PEER_CONTENT = /^\$\.messages\[\]\.body\./;
+
 export function splitByComparability(diff, repoEmpties, liveEmpties) {
   const under = (p, prefixes) => prefixes.some((a) => p.startsWith(a));
   const missingLive = [];
   const extraLive = [];
   const notComparable = [];
   for (const p of diff.missingLive) {
-    if (under(p, liveEmpties)) {
+    if (PEER_CONTENT.test(p)) {
+      notComparable.push({ path: p, why: '`body` is any JSON value by spec: its interior is peer content, not a wire contract' });
+    } else if (under(p, liveEmpties)) {
       notComparable.push({ path: p, why: 'the relay returned NO entries here, so entry fields cannot be compared' });
     } else missingLive.push(p);
   }
   for (const p of diff.extraLive) {
-    if (under(p, repoEmpties)) {
-      notComparable.push({ path: p, why: 'this tree holds NO entries here (empty mock KV), so entry fields cannot be compared' });
+    if (PEER_CONTENT.test(p)) {
+      notComparable.push({ path: p, why: '`body` is any JSON value by spec: its interior is peer content, not a wire contract' });
+    } else if (under(p, repoEmpties)) {
+      notComparable.push({ path: p, why: 'this side holds NO entries here, so entry fields cannot be compared' });
     } else extraLive.push(p);
   }
   return { missingLive, extraLive, notComparable };
@@ -124,8 +151,37 @@ export function typeOnlyPairs(missingLive, extraLive) {
   return pairs;
 }
 
-function mockKV() {
-  const store = new Map();
+// The local store is NOT empty, and that is deliberate (see the header). One fixture message, in the
+// shape the Worker's own validator demands (v/from/seq/ts/type/sig/pow, `from` a 40-64 char key), so
+// that `GET /messages` answers on this side with the facts a live relay answers with -- a real cursor
+// string rather than null. The key uses the Worker's own format: `m:<ts padded to 13>:<messageId>`.
+export const FIXTURE_MESSAGE = {
+  v: 1,
+  from: 'a'.repeat(64),
+  seq: 1,
+  ts: 1750000000000,
+  type: 'announce',
+  sig: 'b'.repeat(64),
+  pow: 'fixture',
+  topic: 'drift-fixture',
+  // `refs` is envelope, not peer content: src/message.mjs:86 always emits it (`fields.refs ?? []`) and
+  // :97-101 requires it to be present and to be an array of strings. An empty array here, which is what
+  // a first message carries -- live entries with refs will have their ELEMENTS demoted by the emptiness
+  // rule, since this side holds no entries under `$.messages[].refs[]`.
+  refs: [],
+  // `body` is ANY JSON value by spec. An OBJECT here, because that is what the live messages carry, so
+  // the TYPE matches and a string-vs-object difference would still be reported as drift. What is inside
+  // it is peer content and is compared only for its presence, never key by key (see PEER_CONTENT).
+  body: { text: 'fixture message: it exists so the local /messages has the same SHAPE as a live one' },
+};
+
+export async function fixtureSeed() {
+  const id = await messageId(FIXTURE_MESSAGE);
+  return { [`m:${String(FIXTURE_MESSAGE.ts).padStart(13, '0')}:${id}`]: FIXTURE_MESSAGE };
+}
+
+export function mockKV(seed = {}) {
+  const store = new Map(Object.entries(seed).map(([key, value]) => [key, JSON.stringify(value)]));
   return {
     async get(key, type) {
       const raw = store.get(key);
@@ -159,7 +215,7 @@ async function compareOne(probe, { relay, secret }) {
   let local;
   try {
     const res = await worker.fetch(new Request(`https://local.test${probe.path}`, { headers }),
-      { COMMONS: mockKV(), ADMISSION_OPERATOR_SECRET: secret });
+      { COMMONS: mockKV(await fixtureSeed()), ADMISSION_OPERATOR_SECRET: secret });
     local = await readJson(res);
   } catch (err) {
     return { probe, skipped: `the LOCAL worker threw: ${err?.message || err}` };
@@ -230,7 +286,7 @@ function main() {
     } else {
       console.log(`\n--- deployed relay vs this tree ---`);
       console.log(`  deployed: ${relay}`);
-      console.log(`  local:    worker/worker.js from this working tree, in process, on an EMPTY mock KV\n`);
+      console.log(`  local:    worker/worker.js from this working tree, in process, on a mock KV seeded with one fixture message\n`);
       for (const r of results) {
         if (r.skipped) { console.log(`  COULD-NOT-COMPARE  ${r.probe.name}\n      ${r.skipped}`); continue; }
         const label = r.drift ? 'DRIFT            ' : (r.notComparable.length ? 'same (limits)    ' : 'same             ');
@@ -245,7 +301,9 @@ function main() {
         if (r.statusDrift) console.log(`      status differs: this tree answers ${r.local.status}, the deploy answers ${r.live.status}`);
       }
       console.log('\n  Compared: HTTP status and response SHAPE (every JSON path with its type).');
-      console.log('  NOT compared: values. The deploy holds real state and the local side holds none,');
+      console.log('  Peer content: a message `body` is any JSON value by spec, so its interior is a stated');
+      console.log('  limit -- only its TYPE is compared. The message ENVELOPE is compared field by field.');
+      console.log('  NOT compared: values. The deploy holds real state and the local side holds a fixture,');
       console.log('  so a shape match means "the deploy is not missing a field or route this tree has"');
       console.log('  -- it does NOT mean the deploy is current. Absence of drift is not a deploy.');
     }

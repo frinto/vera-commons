@@ -12,7 +12,9 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { shapeOf, diffShape, emptyArrayPaths, splitByComparability, typeOnlyPairs } from '../tools/relay-drift.mjs';
+import { shapeOf, diffShape, emptyArrayPaths, splitByComparability, typeOnlyPairs, mockKV, fixtureSeed, FIXTURE_MESSAGE } from '../tools/relay-drift.mjs';
+import worker from '../worker/worker.js';
+import { messageId } from '../src/message.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TOOL = join(ROOT, 'tools', 'relay-drift.mjs');
@@ -96,6 +98,46 @@ test('a difference caused by an EMPTY side is a stated limit, not drift', () => 
     [{ path: '$.cursor', here: 'null', relay: 'string' }]);
   assert.deepEqual(typeOnlyPairs(['$.total:number'], []), [], 'a one-sided difference is not a type pair');
   assert.deepEqual(typeOnlyPairs(['$.a:number'], ['$.b:string']), [], 'different paths are not a type pair');
+});
+
+test('a body interior is a stated limit, but the ENVELOPE is still compared field by field', () => {
+  // Both sides carry a body with a key the other one lacks, and NOTHING is empty (so the emptiness
+  // rule cannot be what demotes them -- the peer-content rule alone has to).
+  const repo = shapeOf({ messages: [{ v: 1, sig: 'x', body: { text: 'mine', mine: 1 } }] });
+  const live = shapeOf({ messages: [{ v: 1, body: { subject: 'theirs', text: 'theirs' } }] });
+  const split = splitByComparability(diffShape(repo, live),
+    emptyArrayPaths({ messages: [{ v: 1, sig: 'x', body: { text: 'mine', mine: 1 } }] }),
+    emptyArrayPaths({ messages: [{ v: 1, body: { subject: 'theirs', text: 'theirs' } }] }));
+
+  assert.deepEqual(split.missingLive, ['$.messages[].sig:string'],
+    'a missing ENVELOPE field is real drift and must survive the peer-content rule (paths carry their type)');
+  assert.deepEqual(split.notComparable.map((n) => n.path).sort(),
+    ['$.messages[].body.mine:number', '$.messages[].body.subject:string'],
+    'body interiors are stated limits on BOTH sides: each is peer content, not a contract');
+  assert.ok(split.notComparable.every((n) => /any JSON value by spec/.test(n.why)));
+  assert.deepEqual(split.extraLive, [], 'nothing else is left to report');
+});
+
+test('the local side is SEEDED, so `cursor` is compared as the same kind of fact as the relay', async () => {
+  const seeded = await worker.fetch(new Request('https://local.test/messages'),
+    { COMMONS: mockKV(await fixtureSeed()) });
+  const body = await seeded.json();
+  assert.equal(seeded.status, 200);
+  assert.equal(body.messages.length, 1, 'the fixture message must come back through the Worker');
+  assert.equal(typeof body.cursor, 'string', 'a seeded store yields a STRING cursor -- which is what the live relay yields');
+  assert.equal(body.cursor, await messageId(FIXTURE_MESSAGE));
+
+  // CONTROL: on the EMPTY store the same route answers null (it returns the request's `since` when
+  // there are no messages). That difference belonged to the fixture, not to the code -- and reporting
+  // it as drift is precisely what this test exists to stop. It is the null-vs-string pair, named.
+  const empty = await worker.fetch(new Request('https://local.test/messages'), { COMMONS: mockKV() });
+  const emptyBody = await empty.json();
+  assert.equal(emptyBody.messages.length, 0);
+  assert.equal(emptyBody.cursor, null, 'the empty store is what produced the false alarm');
+  const d = diffShape(shapeOf(body), shapeOf(emptyBody));
+  assert.deepEqual(typeOnlyPairs(d.missingLive, d.extraLive),
+    [{ path: '$.cursor', here: 'string', relay: 'null' }],
+    'the seeded and the empty body differ by exactly the cursor type: the fixture removes the false alarm and nothing else');
 });
 
 test('a relay that cannot be reached is COULD NOT COMPARE, never a clean bill', () => {
