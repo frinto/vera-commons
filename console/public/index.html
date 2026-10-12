@@ -754,7 +754,21 @@ async function loadRelayQueue() {
   $("relay-list").innerHTML = "";
   try {
     const data = await api("/api/relay/queue");
-    const rows = Array.isArray(data.waiting) ? data.waiting : [];
+    // An unreadable row list must NEVER become an empty one. The server now answers 502 when it could
+    // not read the relay queue, but this page does not get to assume that: with no row list there is
+    // nothing here to count, and "Nobody is waiting" is the one sentence it must not say.
+    if (!Array.isArray(data.waiting)) {
+      status.textContent = "Could NOT read the relay queue: the console sent no row list (that is not the same as an empty queue).";
+      return;
+    }
+    const rows = data.waiting;
+    // The relay may not have reported whether the rows it sent were the WHOLE queue. Those limits are
+    // printed with the counts rather than left in a field nobody renders -- a list that was cut short
+    // and a list that was read completely look identical on this panel otherwise.
+    const caveats = Array.isArray(data.caveats)
+      ? data.caveats.filter((x) => typeof x === "string" && x)
+      : ["the console reported no completeness information"];
+    const caveatText = caveats.length ? "  " + caveats.join("  ") : "";
     // `counts` is the new, unambiguous shape; the top-level `real`/`count` are still honoured so a
     // caller sending the older shape reports its real count instead of silently reporting ZERO. Reading
     // only the new field made this panel announce "0 need a human" for a queue it had just been told
@@ -765,7 +779,9 @@ async function loadRelayQueue() {
     const resolvedCount = c.resolved ?? 0;
     const unknownCount = c.unknown ?? 0;
     if (!rows.length) {
-      status.textContent = "Nobody is waiting at the relay right now.";
+      status.textContent = caveats.length
+        ? "No rows came back — but the relay's answer is INCOMPLETE, so this is NOT proof that nobody is waiting." + caveatText
+        : "Nobody is waiting at the relay right now.";
       return;
     }
     // The headline counts only rows that are STILL UNDECIDED. The relay's list is its memory of every
@@ -775,7 +791,8 @@ async function loadRelayQueue() {
       + " need a human to look at them."
       + (resolvedCount ? "  " + resolvedCount + " already decided (listed below, not counted)." : "")
       + (unknownCount ? "  " + unknownCount + " could NOT be checked." : "")
-      + "  Relay: " + data.relay;
+      + "  Relay: " + data.relay
+      + caveatText;
     renderRelayQueue(rows);
   } catch (err) {
     // Never report an unreachable relay as an empty queue. "Cannot see" and "nobody is there" are

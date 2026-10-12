@@ -48,6 +48,8 @@ const SECRET_FILE = process.env.AC_OPERATOR_SECRET_FILE
 // reading. `import` gives main() a local binding; the `export ... from` keeps this tool's public
 // surface identical for its test.
 import { triage } from '../src/queue-classify.mjs';
+// The relay's answer is read by ONE reader, shared with the console. See src/queue-read.mjs.
+import { readQueue } from '../src/queue-read.mjs';
 export { LEGACY_TRIAL_NOTES, TRIAL, REAL, classifyNote, triage } from '../src/queue-classify.mjs';
 
 function main() {
@@ -78,29 +80,45 @@ function main() {
             : `no requests field (keys: ${Object.keys(body).join(',') || 'none'})`;
         throw new Error(`operator route returned a body that is not a queue: ${what}`);
       }
-      const { rows, trials, real } = triage(body.requests);
+      // ONE reader for the relay's answer, shared with the console (src/queue-read.mjs). Two copies
+      // of "what counts as a queue" would drift, and the drift is asymmetric: a queue read as empty
+      // is a human never looking at the joiner who was in fact waiting.
+      const view = readQueue(body);
+      const { rows, trials, real } = view.read ? triage(view.rows) : { rows: [], trials: [], real: [] };
       // COMPLETENESS is a separate question from what the queue contains, and this tool must not
       // answer it by assumption. A relay that reports it can say the page was cut short, or that an
       // entry exists and could not be read; either way the human has NOT seen the whole queue, and
       // saying "no real applicants waiting" over that would be the one wrong answer again.
       // A relay that reports neither is an older deployment: that is a STATED LIMIT, not a finding,
       // so it is printed and does not fail a review that did read everything it was given.
-      const truncated = body.truncated === true;
-      const unreadable = Array.isArray(body.unreadable) ? body.unreadable : null;
-      const reported = body.truncated !== undefined || unreadable !== null;
-      const partial = truncated || (unreadable !== null && unreadable.length > 0);
-      const completeness = reported
-        ? `${rows.length} read; ${truncated ? 'MORE WAITING, the page was cut short' : 'page complete'}; ${unreadable === null ? 'unreadable count not reported' : `${unreadable.length} unreadable`}`
-        : 'NOT REPORTED by this relay, so completeness cannot be confirmed from here';
+      // `truncated` is read STRICTLY, through readQueue: a value present but not true/false is not
+      // knowledge, so it can no longer license the words "page complete". The test this replaced
+      // (`body.truncated !== undefined`) counted `truncated: "yes"` as a report of completeness.
+      const truncated = view.truncated === true;
+      const unreadable = view.unreadable;
+      const partial = view.truncated === true || (Array.isArray(unreadable) && unreadable.length > 0);
+      const completeness = view.truncated === null
+        ? 'NOT REPORTED by this relay, so completeness cannot be confirmed from here'
+        : `${rows.length} read; ${truncated ? 'MORE WAITING, the page was cut short' : 'page complete'}; ${unreadable === null ? 'unreadable count not reported' : `${unreadable.length} unreadable`}`;
+      if (!view.read) {
+        // A body with no requests list is not an empty queue, and this tool exists to keep those two
+        // apart. Exit 2 = "could not review", never 0.
+        console.error(`admission queue review: FAIL — ${view.why}`);
+        console.error('  Reporting this as "no applicants waiting" would be the one wrong answer.');
+        process.exit(2);
+      }
       if (asJson) {
         console.log(JSON.stringify({
           relay: RELAY, total: rows.length, trials: trials.length, real: real.length,
-          truncated, unreadable, completeness, rows,
+          truncated, unreadable, completeness, caveats: view.caveats, rows,
         }, null, 2));
       } else {
         console.log(`admission queue at ${RELAY}`);
         console.log(`  waiting: ${rows.length}   trial debris: ${trials.length}   REAL APPLICANTS: ${real.length}`);
         console.log(`  completeness: ${completeness}`);
+        // The stated limits are printed next to the count they qualify. A caveat that only exists in
+        // the JSON is a caveat the human reading the screen never sees.
+        for (const c of view.caveats) console.log(`  caveat: ${c}`);
         if (real.length) {
           console.log('');
           console.log('  --- these are not ours; a human should decide them ---');

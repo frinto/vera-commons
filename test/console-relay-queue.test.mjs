@@ -164,9 +164,45 @@ test('an unreachable relay is NEVER reported as an empty queue', async () => {
 });
 
 test('an empty queue is reported as empty, and it is distinguishable from the error above', async () => {
-  const { loadRelayQueue, dom } = runPage(async () => ({ waiting: [], real: 0, relay: 'https://example.invalid' }));
+  // The ONLY body that licenses the flat sentence: a row list that is present and empty, AND a
+  // console that says the list was complete. An empty list ALONE is not enough, because that is
+  // exactly what an unread queue looks like too -- see the next test.
+  const { loadRelayQueue, dom } = runPage(async () => ({
+    waiting: [], real: 0, relay: 'https://example.invalid',
+    completeness: 'page complete', caveats: [],
+  }));
   await loadRelayQueue();
   assert.match(dom['relay-status'].textContent, /Nobody is waiting/);
+});
+
+test('an empty list whose completeness was NOT reported can never say "nobody is waiting"', async () => {
+  const { loadRelayQueue, dom } = runPage(async () => ({ waiting: [], real: 0, relay: 'https://example.invalid' }));
+  await loadRelayQueue();
+  assert.ok(!/Nobody is waiting/.test(dom['relay-status'].textContent),
+    'rows that arrived without the relay saying whether they were the whole queue are not proof that nobody is waiting');
+  assert.match(dom['relay-status'].textContent, /NOT proof that nobody is waiting/);
+});
+
+test('a 200 with NO row list is not an empty queue (the console refuses; the page does not assume)', async () => {
+  const { loadRelayQueue, dom } = runPage(async () => ({
+    counts: { waiting: 0, real: 0 }, relay: 'https://example.invalid',
+  }));
+  await loadRelayQueue();
+  assert.match(dom['relay-status'].textContent, /Could NOT read the relay queue/);
+  assert.ok(!/Nobody is waiting/.test(dom['relay-status'].textContent),
+    'a missing row list must never be counted as zero rows -- the server now answers 502 for it, and this is the page half of the same rule');
+});
+
+test('the stated limits are printed WITH the counts, not left in a field nobody renders', async () => {
+  const { loadRelayQueue, dom } = runPage(async () => ({
+    waiting: [{ requestId: 'r1', kind: 'real' }], real: 1, relay: 'https://example.invalid',
+    counts: { waiting: 1, real: 1, resolved: 0, unknown: 0 },
+    completeness: 'completeness NOT REPORTED by this relay',
+    caveats: ['this relay does not report completeness (`truncated` is absent), so whether everyone waiting is listed here cannot be confirmed from this answer'],
+  }));
+  await loadRelayQueue();
+  assert.match(dom['relay-status'].textContent, /1 waiting/);
+  assert.match(dom['relay-status'].textContent, /cannot be confirmed from this answer/);
 });
 
 test('the status line counts the rows that need a human', async () => {

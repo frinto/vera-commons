@@ -39,6 +39,10 @@ import { CommonsNode } from './src/node.mjs';
 import { censusFrom } from './src/census.mjs';
 import { readRetraction, applyRetractions } from './src/retract.mjs';
 import { classifyNote, TRIAL } from './src/queue-classify.mjs';
+// The relay's answer is read by ONE reader, shared with tools/admission-queue-review.mjs. Two copies
+// of "what counts as a queue" would drift, and this drift is asymmetric: a queue read as empty is a
+// human never looking at the joiner who was in fact waiting.
+import { readQueue, completenessLine } from './src/queue-read.mjs';
 
 const APP = dirname(fileURLToPath(import.meta.url));
 const USB_ROOT = resolve(APP, '..');
@@ -997,6 +1001,13 @@ const server = createServer(async (req, res) => {
         if (r.status !== 200) {
           return json(res, 502, { error: `The relay answered ${r.status} for the queue.`, code: 'RELAY_ERROR' });
         }
+        // A 200 whose body carries no requests list is NOT an empty queue. This console cannot tell
+        // "nobody is waiting" from "I could not read the queue", the two look identical on the panel,
+        // and only one of them is safe to close the page on -- so it refuses instead of counting 0.
+        const view = readQueue(r.payload);
+        if (!view.read) {
+          return json(res, 502, { error: `The relay answered 200 but ${view.why}.`, code: 'QUEUE_UNREADABLE' });
+        }
         const known = new Map((await lib.list()).map((row) => [row.joinKey, row]));
         // `/admission/requests` is NOT a waiting list. It is every request the relay still REMEMBERS
         // (the request key carries a 24-hour TTL), including handshakes that were decided hours ago.
@@ -1006,7 +1017,7 @@ const server = createServer(async (req, res) => {
         // A decided handshake shown as pending is worse than a missing row. It buries the one applicant
         // who really is waiting, and it invites the operator to redo a decision already made and
         // published under their own signature. So each row is joined against the public verdict.
-        const rows = await Promise.all((r.payload?.requests ?? []).map(async (q) => {
+        const rows = await Promise.all(view.rows.map(async (q) => {
           const local = known.get(q.joinKey) ?? null;
           return {
             requestId: q.requestId,
@@ -1038,7 +1049,14 @@ const server = createServer(async (req, res) => {
           unknown: rows.filter((x) => x.resolution.state === 'unknown').length,
           real: rows.filter((x) => x.kind !== TRIAL && x.resolution.state === 'waiting').length,
         };
-        return json(res, 200, { waiting, counts, relay: RELAY, count: counts.waiting, real: counts.real });
+        // The stated limits travel WITH the rows: whether this page was the whole queue, and which
+        // entries existed but could not be read. A page that renders rows without them shows a joiner
+        // who is waiting and a joiner who could not be read as the same absence.
+        return json(res, 200, {
+          waiting, counts, relay: RELAY, count: counts.waiting, real: counts.real,
+          completeness: completenessLine(view), caveats: view.caveats,
+          truncated: view.truncated, unreadable: view.unreadable, total: view.total,
+        });
       }
 
       // Mint a challenge here, then publish it — WITH the taxonomy it is scored against.
@@ -1047,7 +1065,14 @@ const server = createServer(async (req, res) => {
         if (!requestId) return json(res, 400, { error: 'No requestId given.' });
         const q = await relayFetch('/admission/requests', { secret });
         if (q.status !== 200) return json(res, 502, { error: `The relay answered ${q.status}.`, code: 'RELAY_ERROR' });
-        const found = (q.payload?.requests ?? []).find((x) => x.requestId === requestId);
+        // Same refusal as the queue panel: without a requests list this is not "the request is gone",
+        // it is "the queue could not be read". Telling an operator that a waiting joiner has expired
+        // is how a real applicant is lost -- they are asked to apply again, or nobody ever asks.
+        const qv = readQueue(q.payload);
+        if (!qv.read) {
+          return json(res, 502, { error: `The relay answered 200 but ${qv.why}, so this request cannot be looked up.`, code: 'QUEUE_UNREADABLE' });
+        }
+        const found = qv.rows.find((x) => x.requestId === requestId);
         if (!found) return json(res, 404, { error: 'That request is no longer in the queue.', code: 'NOT_QUEUED' });
 
         const started = lib.start(String(found.joinKey));
