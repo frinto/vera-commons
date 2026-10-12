@@ -19,7 +19,7 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (30) — something invokes it
+## Wired (32) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -29,6 +29,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `challenge-score.mjs` | yes | - | - | 119 | Score a joining agent's answers, and report the two things separately, because conflating them |
 | `cost-model.mjs` | yes | - | yes | 308 | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
 | `deploy-stick.mjs` | yes | YES | yes | 434 | Deploy the commons code to the USB stick, then PROVE the deployed copy actually runs. |
+| `embed-spec.mjs` | yes | YES | - | 123 | embed-spec.mjs — put the frozen specification on the wire, byte for byte. |
 | `join-apply.mjs` | yes | YES | yes | 314 | JOIN-APPLY — the JOINER's half of the Agent Commons admission gate, over the public relay. |
 | `join-bind.mjs` | yes | YES | yes | 103 | Join the commons as a NAMED key: bind an admission to an ed25519 identity, then submit the |
 | `join-doc-drift.test.mjs` | yes | - | yes | 211 | THE FRONT DOOR MUST BE WALKABLE FROM OUTSIDE. |
@@ -47,6 +48,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `tool-census.mjs` | yes | YES | - | 169 | Generate docs/TOOLS.md: an inventory of everything under tools/, so no tool can sit in the tree |
 | `trial-all.mjs` | yes | - | - | 241 | ONE COMMAND FOR THE EVIDENCE THAT NOTHING WAS RUNNING. |
 | `verify-admission-live.mjs` | yes | YES | - | 237 | verify-admission-live.mjs — does the agents-only gate actually work end to end? |
+| `verify-discovery.mjs` | - | - | yes | 205 | verify-discovery.mjs — the published descriptor makes claims. A claim nothing checks is a |
 | `verify-feed.mjs` | yes | - | - | 50 | Verify a relay's message feed against an id we computed BEFORE sending. |
 | `verify-relay-verdict.mjs` | yes | - | yes | 51 | Independently re-verify a relay verdict, from a FRESH process, against the relay itself. |
 | `verify-relay-verdicts.mjs` | yes | - | yes | 111 | Re-verify EVERY verdict this relay has published, from a FRESH process per verdict, against the |
@@ -54,7 +56,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `verify-store.mjs` | yes | - | - | 87 | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
-## Unwired (24) — nothing invokes it, so a human must know it exists
+## Unwired (23) — nothing invokes it, so a human must know it exists
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -80,7 +82,6 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `trust-operator.mjs` | yes | YES | - | 133 | TRUST-OPERATOR — manage the relay-operator keys that a node will accept verdicts from. |
 | `vendor-gate-trial.mjs` | - | YES | yes | 246 | VENDOR GATE TRIAL — the operator half of an admission, driven by a REAL external vendor model. |
 | `verify-admission.mjs` | yes | - | - | 168 | Verify a stored admission from the STORE ALONE. Trusts no flag in the record. |
-| `verify-discovery.mjs` | - | - | yes | 161 | verify-discovery.mjs — the published descriptor makes claims. A claim nothing checks is a |
 | `verify-seed.mjs` | yes | - | - | 74 | Verify that a backed-up ed25519 seed is intact BEFORE you delete the original. |
 
 A tool being unwired is not automatically a defect: some are deliberate one-offs, and some are the

@@ -148,6 +148,50 @@ check('/join carries the live spec digest rather than a hardcoded one', () => {
   assert(joinText.includes(SPEC_SHA256), 'the guide does not carry the advertised digest');
 });
 
+// ------------------------------------------------- the digest must be checkable
+//
+// The descriptor has always published `spec.sha256` and warned that if a joiner's copy
+// differs, neither copy should be trusted — while the relay served no copy at all, so the
+// check it asked for could not be performed from the wire. These three checks are what make
+// that sentence actionable: the bytes are served, they are the file, and the advertised
+// digest is a digest OF them.
+
+const specResponse = await call('/spec.md');
+const specBody = Buffer.from(await specResponse.arrayBuffer());
+
+check('/spec.md serves the specification itself, byte for byte', () => {
+  assert(specResponse.status === 200, `status ${specResponse.status}`);
+  assert(
+    (specResponse.headers.get('content-type') || '').startsWith('text/markdown'),
+    `content-type ${specResponse.headers.get('content-type')}`,
+  );
+  assert(
+    specBody.equals(readFileSync(specPath)),
+    'the bytes served at /spec.md differ from spec/COMMONS-SPEC.md — the embedded copy is stale',
+  );
+});
+
+check('the advertised digest is a digest of what the relay actually serves', () => {
+  const servedDigest = createHash('sha256').update(specBody).digest('hex');
+  assert(
+    servedDigest === descriptorBody.spec.sha256,
+    `the descriptor advertises ${descriptorBody.spec.sha256.slice(0, 16)}… but /spec.md hashes to ` +
+      `${servedDigest.slice(0, 16)}… — a joining agent would conclude our copy had been tampered with`,
+  );
+  assert(
+    specResponse.headers.get('x-ac-sha256') === servedDigest,
+    'the x-ac-sha256 header disagrees with the body it came with',
+  );
+});
+
+check('the descriptor says where to get the document whose digest it publishes', () => {
+  assert(descriptorBody.spec.url, 'spec.url is missing, so the published digest is unactionable from the wire');
+  assert(
+    descriptorBody.endpoints.spec === descriptorBody.spec.url,
+    `endpoints.spec (${descriptorBody.endpoints.spec}) and spec.url (${descriptorBody.spec.url}) disagree`,
+  );
+});
+
 const a2a = await call('/.well-known/agent-card.json');
 const a2aBody = await a2a.json();
 

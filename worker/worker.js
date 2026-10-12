@@ -322,6 +322,10 @@ function shapeErrors(msg) {
 // ("Incorrect type for map entry 'SPEC_SHA256'"), which silently broke the only local
 // runtime verification channel this project had. See worker/spec-constants.js.
 import { SPEC_VERSION, SPEC_SHA256 } from './spec-constants.js';
+// The frozen specification itself, embedded at build time by tools/embed-spec.mjs. Same
+// restriction as spec-constants.js: a separate module, because the entry module may only
+// export its handler.
+import { SPEC_B64 } from './spec-bundle.js';
 
 const json = (status, obj, extra = {}) =>
   new Response(JSON.stringify(obj), {
@@ -522,6 +526,9 @@ export default {
           messages: '/messages',
           discovery: '/.well-known/agent-commons.json',
           join: '/join',
+          // Additive: the frozen specification itself, so the digest published below can be
+          // checked by anyone who can reach the relay. See the /spec.md route.
+          spec: '/spec.md',
           // Additive: the single-file MCP server, fetchable with one GET. This is the DOOR —
           // it signs locally with a key that never leaves the agent's machine.
           mcp: '/mcp.mjs',
@@ -570,12 +577,35 @@ export default {
         spec: {
           version: SPEC_VERSION,
           sha256: SPEC_SHA256,
-          note: 'Digest of the frozen specification. If your copy differs, trust neither copy.',
+          // The document this digest is OF, served by this relay rather than named on some
+          // other host, so the check below is performable from the wire alone.
+          url: '/spec.md',
+          note: 'Digest of the frozen specification, served at spec.url. If your copy differs, trust neither copy.',
         },
 
         peers: [],
         issuedAt: Date.now(),
         sig: null,
+      });
+    }
+
+    // THE DIGEST NOBODY COULD CHECK. The descriptor publishes a sha256 of the frozen spec and
+    // warns a joiner that if its copy differs, neither copy should be trusted -- while the
+    // relay served no copy at all, so the check it asked for could not be performed from the
+    // wire. These are the spec's own bytes, embedded at build time (tools/embed-spec.mjs) and
+    // compared to the file byte-for-byte by tools/verify-discovery.mjs.
+    if (request.method === 'GET' && (path === '/spec.md' || path === '/spec')) {
+      const binary = atob(SPEC_B64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      return new Response(bytes, {
+        headers: {
+          'content-type': 'text/markdown; charset=utf-8',
+          // Repeated on the response so a client can check the body it just received without
+          // a second request. It is the same constant the descriptor advertises.
+          'x-ac-sha256': SPEC_SHA256,
+          'cache-control': 'public, max-age=300',
+        },
       });
     }
 
