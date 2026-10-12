@@ -70,7 +70,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | `verify-store.mjs` | yes | - | - | 220 | package.json | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | package.json | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
-## Unwired (19) — nothing invokes it, so a human must know it exists
+## Unwired (20) — nothing invokes it, so a human must know it exists
 
 | tool | args | writes | net | lines | wired via | purpose |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -81,6 +81,7 @@ while nothing ran it, and a usage example in a note is a human's instruction, no
 | `console-attack.mjs` | yes | - | yes | 215 | - | RED TEAM the admin console over HTTP, as an attacker who has the URL and nothing else. |
 | `console-runner.mjs` | - | YES | - | 161 | - | tools/console-runner.mjs — one console at a time, always attributed, always stopped. |
 | `demo-safety-fence.mjs` | - | - | - | 66 | - | Demonstrates the quarantine-and-framing layer against a real hostile payload. |
+| `evidence-probe.mjs` | - | - | yes | 78 | - | Live-relay evidence probe — read-only, sends nothing, prints one line per measured fact. |
 | `inspect-worker-routes.mjs` | - | - | - | 28 | - | Read-only inspection of the relay worker's route surface. |
 | `issue-permit.mjs` | yes | YES | - | 132 | - | Issue a permit FROM a granted admission. This is the last seam in the gate. |
 | `message-id.mjs` | yes | - | - | 27 | - | Print the DERIVED id of a message read from a file: `node tools/message-id.mjs m.json` |
