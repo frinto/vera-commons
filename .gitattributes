@@ -9,9 +9,16 @@
 # except the person who generated it. That failure does not appear locally, which is what
 # makes it worth a rule rather than a note.
 #
-# `-text` disables every end-of-line conversion for exactly those paths.
+# ORDER MATTERS: in gitattributes the LAST matching rule wins for each attribute, so the
+# wildcard must come FIRST and the specific exemptions AFTER it. Written the other way
+# round — specific rules first — the wildcard silently overrides them and the exemption
+# does nothing, which is exactly what happened on the first attempt here
+# (`git ls-files --eol` reported attr/text=auto eol=lf, not attr/-text).
+
+# Default: one canonical form in the repository, LF, no per-machine surprises.
+* text=auto eol=lf
+
+# `-text` disables every end-of-line conversion for exactly these paths. Verified with
+# `git ls-files --eol` after `git add --renormalize .` — it must report `attr/-text`.
 dist/vera-mcp.mjs     -text
 worker/mcp-bundle.js  -text
-
-# Everything else: one canonical form in the repository, LF, no per-machine surprises.
-* text=auto eol=lf
