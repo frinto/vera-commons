@@ -66,7 +66,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
 | `binding-live-probe.mjs` | - | YES | yes | 128 | Live probe: can an agent actually bind itself to an admission on the DEPLOYED console? |
-| `bridge-trial.mjs` | - | YES | yes | 267 | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
+| `bridge-trial.mjs` | - | YES | yes | 315 | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
 | `check-admin-levels.mjs` | - | - | - | 33 | Print the resolved permit level of every administrative key on the stick, and which of them may |
 | `console-attack.mjs` | yes | - | yes | 215 | RED TEAM the admin console over HTTP, as an attacker who has the URL and nothing else. |
 | `console-relay-trial.mjs` | - | YES | yes | 614 | CONSOLE ↔ RELAY BRIDGE TRIAL — does the human admin's console actually drive the remote door? |

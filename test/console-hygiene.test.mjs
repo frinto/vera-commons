@@ -162,11 +162,12 @@ setInterval(() => {}, 1000);
   // the release. The list is the inventory -- do not re-count it in prose elsewhere.
   const USES_RUNNER = ['tools/admission-ceremony.mjs', 'tools/ceremony-live-trial.mjs', 'tools/deploy-stick.mjs',
     'tools/relay-actions-live.mjs', 'tools/binding-live-probe.mjs', 'tools/console-relay-trial.mjs',
-    'tools/permit-seam-probe.mjs'];
+    'tools/permit-seam-probe.mjs', 'tools/bridge-trial.mjs'];
   // Declared debt, each with the reason it is not converted yet. Not a compliment -- a census entry.
-  const DEBT = new Map([
-    ['tools/bridge-trial.mjs', 'kills in a finally, but no port pre-flight and no proof of release'],
-  ]);
+  // EMPTY as of 2026-10-12: every console booter in tools/ now takes the lock, pre-flights the port by
+  // NAME and can prove the release. The map is kept because the rule is "converted or declared": a
+  // newly added booter must land in one of the two lists, and in neither is a FAILURE below.
+  const DEBT = new Map([]);
 
   for (const f of detected) {
     const src = readFileSync(join(ROOT, f), 'utf8');

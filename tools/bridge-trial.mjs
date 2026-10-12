@@ -18,12 +18,13 @@
 // AC_FROM_STICK=1 runs this against the DEPLOYED code on the stick. A fix that passes against the
 // working tree proves only that the working tree is right; the stick is what the admin actually runs.
 
-import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, cpSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startConsole, stopAndVerify } from './console-runner.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STICK = process.env.AC_STICK || 'E:\\';
@@ -105,26 +106,64 @@ const verifier = JSON.parse(readFileSync(join(STICK, 'verifier.json'), 'utf8'));
 verifier.dir = 'data/admissions';
 writeFileSync(join(WORK, 'verifier.json'), JSON.stringify(verifier, null, 2));
 
-console.log(`  (console under test: ${FROM_STICK ? 'THE DEPLOYED STICK' : 'the source tree'})`);
-const child = spawn(process.execPath, [
-  join(WORK, 'console', 'app.mjs'), '--port', String(PORT), '--no-browser',
-  '--relay', `http://127.0.0.1:${FAKE_PORT}`,
-], { cwd: join(WORK, 'console'), stdio: ['ignore', 'pipe', 'pipe'] });
+// THE COPY MUST BE FAITHFUL, and the run must SAY which tree it is a copy OF -- otherwise every arm
+// below is a statement about an artifact nobody named. The seam files are also compared between the
+// working tree and the deployment, so a green run against the source tree can never quietly stand in
+// for a deployment that is behind (AC_FROM_STICK=1 tests the deployed bytes directly).
+const hashOf = (p) => (existsSync(p) ? createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 12) : '(missing)');
+check(hashOf(join(WORK, 'console', 'app.mjs')) === hashOf(join(SRC_CONSOLE, 'app.mjs')),
+  'the console under test is byte-identical to its named source', hashOf(join(WORK, 'console', 'app.mjs')));
+check(hashOf(join(WORK, 'console', 'src', 'admission.mjs')) === hashOf(join(SRC_SRC, 'admission.mjs')),
+  'and so is the admission library it imports', hashOf(join(WORK, 'console', 'src', 'admission.mjs')));
+const drift = ['console/app.mjs', 'src/admission.mjs', 'src/message.mjs']
+  .map((rel) => ({ rel, repo: hashOf(join(ROOT, rel)), stick: hashOf(join(STICK, rel)) }))
+  .filter((d) => d.repo !== d.stick);
+console.log(drift.length
+  ? `  (DRIFT: the deployment differs from the source tree -- ${drift.map((d) => `${d.rel} repo=${d.repo} stick=${d.stick}`).join('; ')}. This run tests the ${FROM_STICK ? 'DEPLOYED' : 'SOURCE'} tree.)`
+  : '  (drift check: console/app.mjs, src/admission.mjs and src/message.mjs match between the source tree and the deployment)');
 
-let out = '';
-const tokenReady = new Promise((res) => {
-  const onData = (c) => { out += String(c); const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(out); if (m) res(m[1]); };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-  setTimeout(() => res(null), 20000);
+console.log(`  (console under test: ${FROM_STICK ? 'THE DEPLOYED STICK' : 'the source tree'})`);
+// The console is started THROUGH THE RUNNER: it refuses a port that is already served (naming the
+// holder out of .tmp/console-locks/<port>.json) instead of racing it, and it can prove the release.
+// A bare spawn could report arms as passing while the HTTP answers came from someone else's build.
+const startCopy = (args, readyTimeoutMs) => startConsole({
+  app: join(WORK, 'console', 'app.mjs'), port: PORT, args, cwd: join(WORK, 'console'),
+  tool: 'bridge-trial.mjs', readyTimeoutMs,
 });
 
+// THE OVERRIDE IS PROVEN TO BE AN OVERRIDE OF A WORKING GATE. Without this arm, --allow-fixed-disk
+// would be a flag that might be hiding a media gate which quietly stopped working. Measured
+// 2026-10-12, and this is why the arm exists: this trial had NEVER started its console -- it passed no
+// flag, the console refused, and the harness reported "the console never printed a token" only after
+// its full 20s timeout. The census entry blamed a kill with no proof of release; the real defect was
+// that the trial could not run at all, and a debt reason written from the code's SHAPE had hidden it.
+let gateRefusal = '';
+try {
+  const leaked = await startCopy([], 8000);
+  gateRefusal = '(the console STARTED without --allow-fixed-disk: the media gate is OPEN)';
+  try { await stopAndVerify(leaked); } catch { /* reported below regardless */ }
+} catch (e) {
+  gateRefusal = e && e.message ? e.message : String(e);
+}
+check(/never printed a token/.test(gateRefusal) && !/Refusing to start/.test(gateRefusal),
+  'the console REFUSES to run from a copy when it is not told otherwise',
+  gateRefusal.split('\n')[0].slice(0, 120));
+check(/allow-fixed-disk/.test(gateRefusal),
+  'the refusal names the override, so an operator can act on it',
+  gateRefusal.split('\n').filter((l) => l.includes('allow-fixed-disk')).join(' ').trim().slice(0, 110));
+
+let out = '';
 const readTrustNow = () => JSON.parse(readFileSync(join(WORK, 'trust.json'), 'utf8'));
 
+let live = null;
 let exitCode = 0;
 try {
-  const TOKEN = await tokenReady;
-  if (!TOKEN) throw new Error('the console never printed a token: ' + out.slice(-400));
+  live = await startCopy(['--no-browser', '--relay', `http://127.0.0.1:${FAKE_PORT}`, '--allow-fixed-disk'], 20000);
+  out = live.out;   // the console's own output, kept so a failed arm can say why
+  const more = (c) => { out += String(c); };
+  live.child.stdout?.on('data', more);
+  live.child.stderr?.on('data', more);
+  const TOKEN = live.token;
   const BASE = `http://127.0.0.1:${PORT}`;
   const call = async (path, init = {}) => {
     const res = await fetch(`${BASE}${path}${path.includes('?') ? '&' : '?'}t=${TOKEN}`, {
@@ -256,7 +295,16 @@ try {
   failures++;
   console.error('  FAIL threw: ' + (err?.message || err));
 } finally {
-  try { child.kill(); } catch { /* already gone */ }
+  // The release proof is a CHECK and it lands BEFORE the verdict line below: a run whose stop check
+  // failed must not be able to print PASSED.
+  if (live) {
+    try {
+      await stopAndVerify(live);
+      check(true, `the console was stopped and port ${PORT} is free again`);
+    } catch (e) {
+      check(false, `the console was stopped and port ${PORT} is free again`, e && e.message ? e.message : String(e));
+    }
+  }
   try { fakeRelay.close(); } catch { /* already closed */ }
   try { rmSync(WORK, { recursive: true, force: true }); } catch { /* temp */ }
 }
