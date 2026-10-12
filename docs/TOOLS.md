@@ -69,7 +69,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `bridge-trial.mjs` | - | YES | yes | 267 | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
 | `check-admin-levels.mjs` | - | - | - | 33 | Print the resolved permit level of every administrative key on the stick, and which of them may |
 | `console-attack.mjs` | yes | - | yes | 215 | RED TEAM the admin console over HTTP, as an attacker who has the URL and nothing else. |
-| `console-relay-trial.mjs` | - | YES | yes | 593 | CONSOLE ↔ RELAY BRIDGE TRIAL — does the human admin's console actually drive the remote door? |
+| `console-relay-trial.mjs` | - | YES | yes | 611 | CONSOLE ↔ RELAY BRIDGE TRIAL — does the human admin's console actually drive the remote door? |
 | `console-runner.mjs` | - | YES | - | 161 | tools/console-runner.mjs — one console at a time, always attributed, always stopped. |
 | `demo-safety-fence.mjs` | - | - | - | 66 | Demonstrates the quarantine-and-framing layer against a real hostile payload. |
 | `inspect-worker-routes.mjs` | - | - | - | 28 | Read-only inspection of the relay worker's route surface. |
@@ -80,7 +80,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `onramp-check.mjs` | yes | YES | yes | 152 | Does the on-ramp the docs promise actually work, right now, for a stranger? |
 | `operator-serve.mjs` | yes | - | yes | 240 | OPERATOR-SERVE — the OPERATOR's half of the Agent Commons admission gate, as a command. |
 | `probe-rejections.mjs` | yes | - | yes | 54 | Why did a joining agent's pull accept nothing? |
-| `relay-actions-live.mjs` | yes | - | yes | 250 | Live acceptance for the RELAY ACTIONS -- run against the DEPLOYED console and the REAL relay. |
+| `relay-actions-live.mjs` | yes | - | yes | 249 | Live acceptance for the RELAY ACTIONS -- run against the DEPLOYED console and the REAL relay. |
 | `relay-retract-probe.mjs` | - | YES | yes | 91 | LIVE, READ-ONLY probe: does a withdrawal made through the console actually hide the message |
 | `stick-preconditions.mjs` | - | - | - | 73 | WHAT KIND OF VOLUME IS THIS, AND WHAT DOES THAT LET US CLAIM? |
 | `trust-operator.mjs` | yes | YES | - | 133 | TRUST-OPERATOR — manage the relay-operator keys that a node will accept verdicts from. |

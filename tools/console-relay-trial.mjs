@@ -22,11 +22,11 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, existsSyn
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
-import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { canonicalize } from '../src/message.mjs';
 import { generateIdentity, loadIdentity, saveIdentity, sign } from '../src/identity.mjs';
 import { relayBindBytes, relayInterviewBytes } from '../src/admission.mjs';
+import { startConsole, stopAndVerify } from './console-runner.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STICK = process.env.AC_STICK || 'E:\\';
@@ -221,42 +221,60 @@ console.log('relay : ' + RELAY + (LIVE ? '   *** LIVE PUBLIC RELAY ***' : '   (l
 console.log('actor : trial identity ' + trial.agentId.slice(0, 10) + '…');
 console.log('');
 
-// --- 2. start the console, capture its per-run token -------------------------
-const child = spawn(process.execPath, [join(CONSOLE, 'app.mjs'), '--port', String(PORT), '--relay', RELAY, '--no-browser',
+// --- 2. start the console through the runner, capture its per-run token ------
+// WHY THE RUNNER, and not the bare spawn this used to be. Two measured facts about Windows make a
+// hand-rolled lifecycle unsafe here:
+//
+//   1. Two processes can hold one port. A spawn that "did not throw" may still have answered from a
+//      stranger's build — and every check below ASSERTS things about the console this harness thinks
+//      it started, so a squatter would not make the run fail, it would make the run meaningless.
+//   2. A throw between spawn and the kill leaks a console. That is not hypothetical: a console from a
+//      stale copy of this project held a port for 7h19m after the round that started it moved on.
+//
+// The runner refuses a served port BY NAME (reading the holder out of .tmp/console-locks/<port>.json)
+// instead of racing for the socket, and stopAndVerify proves the port was released afterwards.
+const CONSOLE_ARGS = ['--relay', RELAY, '--no-browser',
   // The layout is a temp directory on a fixed disk by design, so the media gate must be relaxed or the
   // console will not start at all (it refuses, and says so -- see console/media.mjs). That gate exists
   // to stop a COPY of the console being mistaken for the real one. What makes this layout not a copy
   // is its own key, its own trust root, and the deliberate absence of the human's identity (asserted
   // above) -- not the drive it happens to sit on.
-  '--allow-fixed-disk'], {
-  cwd: CONSOLE, stdio: ['ignore', 'pipe', 'pipe'],
-});
-let out = '';
-const tokenReady = new Promise((resolvePromise) => {
-  const onData = (c) => {
-    out += String(c);
-    const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(out);
-    if (m) resolvePromise(m[1]);
-  };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-  setTimeout(() => resolvePromise(null), 20000);
-});
+  '--allow-fixed-disk'];
+let live = null;
+try {
+  live = await startConsole({
+    app: join(CONSOLE, 'app.mjs'), port: PORT, args: CONSOLE_ARGS, cwd: CONSOLE,
+    tool: 'console-relay-trial.mjs', readyTimeoutMs: 20000,
+  });
+} catch (e) {
+  console.log('CONSOLE DID NOT START. ' + (e && e.message ? e.message : e));
+  try { localRelay?.close(); } catch { /* already gone */ }
+  process.exit(1);
+}
+let out = live.out;
+{
+  const more = (c) => { out += String(c); };
+  live.child.stdout?.on('data', more);
+  live.child.stderr?.on('data', more);
+}
 
-function stop() {
-  try { child.kill(); } catch { /* already gone */ }
+// Stopping is ASYNC now, because proving the port came free is the point of it. The layout itself is
+// still deliberately kept (the comment below says why), and so is the local relay close.
+async function stop() {
+  try {
+    await stopAndVerify(live);
+    check('the console was stopped and port ' + PORT + ' is free again', true);
+  } catch (e) {
+    check('the console was stopped and port ' + PORT + ' is free again', false,
+      e && e.message ? e.message : String(e));
+  }
   try { localRelay?.close(); } catch { /* already gone */ }
   // The layout is deliberately KEPT. It holds the trial identity's message store, and keeping it is
   // exactly what makes the next run's `seq` continue instead of restarting at 1 — the defect this
   // trial used to inflict on the live relay.
 }
 
-const TOKEN = await tokenReady;
-if (!TOKEN) {
-  console.log('CONSOLE DID NOT START. Output was:\n' + out);
-  stop();
-  process.exit(1);
-}
+const TOKEN = live.token;
 const stated = /console is wired|Admissions not wired/i.test(out) || true;
 check('the console started and issued a per-run token', typeof TOKEN === 'string' && TOKEN.length > 10);
 check('the console reports admissions wired (the bridge needs the library)', !/Admissions not wired/.test(out),
@@ -587,6 +605,9 @@ check('★ the log still verifies: 0 unverifiable messages after the withdrawal'
   r.json.counts.unverifiable === 0, 'unverifiable=' + r.json.counts.unverifiable);
 
 console.log('');
+// The release proof must land INSIDE the count, not after it. Printed the other way round, a log
+// grepped for 'assertions passed' showed a green total on a run whose stop check had just failed —
+// the summary would have been the one line that lied about the run it was summarising.
+await stop();
 console.log(`${pass} assertions passed${fail ? ', ' + fail + ' FAILED' : ''}.`);
-stop();
 if (fail) process.exit(1);
