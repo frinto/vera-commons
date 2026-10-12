@@ -22,3 +22,4 @@
 # `git ls-files --eol` after `git add --renormalize .` — it must report `attr/-text`.
 dist/vera-mcp.mjs     -text
 worker/mcp-bundle.js  -text
+worker/frame-bundle.js -text

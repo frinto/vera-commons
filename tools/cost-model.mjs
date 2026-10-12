@@ -69,19 +69,57 @@ function branch(src, startMarker, endMarker) {
   return src.slice(i, j < 0 ? src.length : j);
 }
 
+// A route body ends where the NEXT route begins — not at some unrelated marker that merely
+// happened to follow it once. The previous end marker was "request.method === 'POST'", which
+// was true only while the POST /messages route immediately followed the GET one. Inserting any
+// route in between silently widened the slice, so the GET branch started absorbing other
+// routes' KV calls. Anchor on route indentation instead: every route sits at 4 spaces inside
+// fetch().
+function routeBody(src, startMarker) {
+  const i = src.indexOf(startMarker);
+  if (i < 0) return null;
+  const rest = src.slice(i + startMarker.length);
+  const m = /\n {4}if \(/.exec(rest);
+  return m ? src.slice(i, i + startMarker.length + m.index) : src.slice(i);
+}
+
+// Follow ONE level of local `function` declarations called by a route body.
+//
+// ★ Why this is necessary rather than nice-to-have: the KV op budget is protected by counting
+// literal `kv.list(` / `kv.get(` / `kv.put(` occurrences inside a route. When a route delegates
+// that work to a helper — as GET /messages now delegates to pageMessages() — the count drops to
+// zero, and the check reports an impossible-looking failure (or, worse, a "0 ops" route that
+// quietly stops being protected). The invariant was still true; the MEASUREMENT went blind.
+// Only `function NAME(` declarations are inlined, so keyword calls (if/for/while) and helper
+// calls made FROM a helper are naturally excluded — the reach is deliberately one level, which
+// is exactly the delegation depth these routes use.
+function helperBody(src, name) {
+  const i = src.indexOf(`function ${name}(`);
+  if (i < 0) return '';
+  const j = src.indexOf('\n}', i);
+  return j < 0 ? '' : src.slice(i, j + 2);
+}
+
+function withHelpers(src, text) {
+  if (!text) return text;
+  let out = text;
+  for (const m of text.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
+    const body = helperBody(src, m[1]);
+    if (body) out += '\n' + body;
+  }
+  return out;
+}
+
 export function countOps(src) {
-  const post = branch(src, "path === '/messages'", "path === '/.well-known");
-  const forms = {
-    // the GET branch is the one guarded by method === 'GET'
-    get: branch(src, "request.method === 'GET' && path === '/messages'", "request.method === 'POST'"),
-    post: post ? branch(post, "request.method === 'POST'", "\u0000") : null,
-  };
+  const get = withHelpers(src, routeBody(src, "request.method === 'GET' && path === '/messages'"));
+  const postRoute = routeBody(src, "request.method === 'POST' && path === '/messages'");
+  const post = withHelpers(src, postRoute);
   const count = (text, needle) => (text ? text.split(needle).length - 1 : -1);
   return {
-    getList: count(forms.get, 'kv.list('),
-    getRead: count(forms.get, 'kv.get('),
-    postRead: count(forms.post, 'kv.get('),
-    postWrite: count(forms.post, 'kv.put('),
+    getList: count(get, 'kv.list('),
+    getRead: count(get, 'kv.get('),
+    postRead: count(post, 'kv.get('),
+    postWrite: count(post, 'kv.put('),
   };
 }
 

@@ -45,6 +45,7 @@ const ROOT = join(HERE, '..');
 const MODULES = [
   join(ROOT, 'src', 'identity.mjs'),
   join(ROOT, 'src', 'message.mjs'),
+  join(ROOT, 'src', 'frame.mjs'),
   join(ROOT, 'src', 'policy.mjs'),
   join(ROOT, 'tools', 'mcp-server.mjs'),
 ];
@@ -54,7 +55,11 @@ const OUT_EMBED = join(ROOT, 'worker', 'mcp-bundle.js');
 const CHECK = process.argv.includes('--check');
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
-const EXPORT_LIST_RE = /^export\s*\{[^}]*\}\s*;?[ \t]*$/gm;
+// Handles BOTH `export { a, b };` and the RE-EXPORT form `export { a, b } from './x.mjs';`.
+// The re-export matters: src/policy.mjs re-exports the framing from src/frame.mjs so existing
+// importers keep working, and a source-level `from` clause that no rule matches would survive
+// into the bundle — caught by the self-check as "a relative import survived into the output".
+const EXPORT_LIST_RE = /^export\s*\{[^}]*\}\s*(?:from\s*['"][^'"]+['"])?\s*;?[ \t]*$/gm;
 const EXPORT_DECL_RE = /^export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\b)/gm;
 // `export default { a, b };` and `export default name;` — dropped whole. Any other
 // form of `export default` survives and is caught by selfCheck() below.
@@ -215,9 +220,52 @@ const embed = [
   '',
 ].join('\n');
 
+// --- the Worker's copy of the untrusted-content framing ---------------------
+// NOT a re-implementation. This is src/frame.mjs carried VERBATIM, so the relay applies the
+// identical fence the Node side applies. A second implementation would drift, and the drifted
+// copy would be the silent weak one — the failure mode this whole project exists to avoid.
+// It is generated, digest-checked by --check, and refused if it ever grows an import.
+const frameSource = readFileSync(join(ROOT, 'src', 'frame.mjs'), 'utf8');
+const frameSha = createHash('sha256').update(frameSource, 'utf8').digest('hex');
+const frameBytes = Buffer.byteLength(frameSource, 'utf8');
+{
+  // Test the CODE, not the prose. The first version of this guard fired on frame.mjs's own
+  // header comment, which explains that policy.mjs imports node:fs and that this module uses
+  // no Buffer — the words were in the explanation, not in the code. Strip comments first;
+  // a guard that reads documentation as evidence is the same defect class as a check that
+  // cannot fail, just pointed the other way.
+  const frameCode = frameSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  const bad = [];
+  if (/^\s*import\b/m.test(frameCode)) bad.push('src/frame.mjs gained an import — it must stay pure');
+  if (/\bnode:/.test(frameCode)) bad.push('src/frame.mjs references a node: builtin — the Worker has none');
+  if (/\bBuffer\b/.test(frameCode)) bad.push('src/frame.mjs references Buffer — the Worker has TextEncoder, not Buffer');
+  if (!/^export /m.test(frameCode)) bad.push('src/frame.mjs stopped exporting anything — the Worker would import nothing');
+  if (bad.length) {
+    console.error('FRAME BUNDLE REFUSED:');
+    for (const b of bad) console.error('  ' + b);
+    process.exit(1);
+  }
+}
+const frameBundle = [
+  '// GENERATED FILE — DO NOT EDIT.  Source: src/frame.mjs via tools/build-standalone.mjs',
+  '//',
+  '// The untrusted-content framing, carried verbatim into the Cloudflare Worker so the relay',
+  '// renders peer messages with the IDENTICAL fence the Node side uses.',
+  '//',
+  `// source sha256: ${frameSha}`,
+  `// source bytes:  ${frameBytes}`,
+  '// Regenerate:    node tools/build-standalone.mjs',
+  '',
+  frameSource.trimEnd(),
+  '',
+].join('\n');
+const OUT_FRAME = join(ROOT, 'worker', 'frame-bundle.js');
+
 if (CHECK) {
   const drift = [];
-  for (const [path, want] of [[OUT_STANDALONE, standalone], [OUT_EMBED, embed]]) {
+  for (const [path, want] of [[OUT_STANDALONE, standalone], [OUT_EMBED, embed], [OUT_FRAME, frameBundle]]) {
     const rel = relative(ROOT, path).split('\\').join('/');
     if (!existsSync(path)) drift.push(`${rel}: MISSING`);
     else if (readFileSync(path, 'utf8') !== want) drift.push(`${rel}: DIFFERS from a fresh build of the current sources`);
@@ -233,6 +281,8 @@ if (CHECK) {
   mkdirSync(dirname(OUT_STANDALONE), { recursive: true });
   writeFileSync(OUT_STANDALONE, standalone);
   writeFileSync(OUT_EMBED, embed);
+  writeFileSync(OUT_FRAME, frameBundle);
+  console.log(`wrote ${relative(ROOT, OUT_FRAME).split('\\').join('/')}  ${frameBundle.length} bytes  (verbatim src/frame.mjs, sha256 ${frameSha.slice(0, 16)})`);
   console.log(`wrote ${relative(ROOT, OUT_STANDALONE).split('\\').join('/')}  ${standalone.length} bytes, ${standalone.split('\n').length} lines`);
   console.log(`wrote ${relative(ROOT, OUT_EMBED).split('\\').join('/')}  ${embed.length} bytes`);
   console.log(`sha256 ${createHash('sha256').update(standalone).digest('hex')}`);

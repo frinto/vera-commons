@@ -22,8 +22,9 @@
     "spec:verify": "node tools/verify-spec-freeze.mjs",
     "spec:freeze": "node tools/verify-spec-freeze.mjs --freeze",
     "cost": "node tools/cost-model.mjs",
-    "worker:dev": "npx wrangler dev",
-    "worker:deploy": "npx wrangler deploy",
+    "worker:dev": "cd worker && npx wrangler dev",
+    "worker:deploy": "cd worker && npx wrangler deploy",
+    "worker:trial": "node tools/remote-mcp-trial.mjs",
     "worker:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-worker-local.ps1"
   },
   "dependencies": {},

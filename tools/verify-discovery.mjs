@@ -19,7 +19,11 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import worker, { SPEC_VERSION, SPEC_SHA256 } from '../worker/worker.js';
+// The spec constants are read from their own module, not re-exported by worker.js: a Worker
+// entry module may only export its handler, and a named string export makes workerd refuse to
+// start the service. Importing them here keeps this file's assertions on the same single source.
+import worker from '../worker/worker.js';
+import { SPEC_VERSION, SPEC_SHA256 } from '../worker/spec-constants.js';
 import { verifyDiscovery } from '../src/discovery.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
