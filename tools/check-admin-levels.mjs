@@ -1,3 +1,14 @@
+// Print the resolved permit level of every administrative key on the stick, and which of them may
+// retract any message.
+//
+// Read-only. It parses E:\trust.json together with the key files beside it and resolves levels through
+// src/permit.mjs, so what it prints is what the permit system actually believes -- not what
+// trust.json's own text claims. That distinction is the reason to have the tool: a permit entry that
+// looks authoritative in the file can still resolve to `observer` if it is revoked or if its root was.
+//
+// LIMIT, stated because it is load-bearing: the four paths below are hardcoded to E:\, so this runs
+// only on the machine with the stick mounted there. It is a bench tool for the human admin, not
+// something an agent arriving over the network can run.
 import { readFileSync } from 'node:fs';
 import { resolveTrust } from '../src/permit.mjs';
 
