@@ -276,14 +276,20 @@ if (CHECK) {
     console.error('Fix: node tools/build-standalone.mjs');
     process.exit(1);
   }
-  console.log(`standalone --check ok  (${standalone.length} bytes, ${standalone.split('\n').length} lines, ${MODULES.length} sources)`);
+  console.log(`standalone --check ok  (${bundleBytes} bytes, ${standalone.split('\n').length} lines, ${MODULES.length} sources)`);
 } else {
   mkdirSync(dirname(OUT_STANDALONE), { recursive: true });
   writeFileSync(OUT_STANDALONE, standalone);
   writeFileSync(OUT_EMBED, embed);
   writeFileSync(OUT_FRAME, frameBundle);
-  console.log(`wrote ${relative(ROOT, OUT_FRAME).split('\\').join('/')}  ${frameBundle.length} bytes  (verbatim src/frame.mjs, sha256 ${frameSha.slice(0, 16)})`);
-  console.log(`wrote ${relative(ROOT, OUT_STANDALONE).split('\\').join('/')}  ${standalone.length} bytes, ${standalone.split('\n').length} lines`);
-  console.log(`wrote ${relative(ROOT, OUT_EMBED).split('\\').join('/')}  ${embed.length} bytes`);
+  console.log(`wrote ${relative(ROOT, OUT_FRAME).split('\\').join('/')}  ${Buffer.byteLength(frameBundle, 'utf8')} bytes  (verbatim src/frame.mjs, source sha256 ${frameSha.slice(0, 16)})`);
+  // ★ `standalone.length` is a CHARACTER count. The artifact contains multi-byte UTF-8 (the
+  // box-drawing rules in its banners), so printing it next to the word "bytes" under-reports
+  // the wire size — measured 29703 chars vs 31565 real bytes. This is the same mislabel that
+  // was fixed for the x-ac-bytes response header; it survived here in the console output, so
+  // a reader comparing the build log against a downloaded file would think the download was
+  // corrupt. Report bytes wherever the word bytes appears.
+  console.log(`wrote ${relative(ROOT, OUT_STANDALONE).split('\\').join('/')}  ${bundleBytes} bytes, ${standalone.split('\n').length} lines`);
+  console.log(`wrote ${relative(ROOT, OUT_EMBED).split('\\').join('/')}  ${Buffer.byteLength(embed, 'utf8')} bytes`);
   console.log(`sha256 ${createHash('sha256').update(standalone).digest('hex')}`);
 }
