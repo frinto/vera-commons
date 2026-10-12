@@ -675,6 +675,21 @@ async function loadAdmissions() {
   }
 }
 
+/* The POST itself, with NO confirmation. Split out because the waiver retry below must not ask
+   again: re-entering decideAdmission() would repeat its own confirm(), which measured (2026-10-11,
+   real browser, synthetic store) as a THIRD dialog asking the question the operator had just
+   answered. One decision, one waiver: two dialogs, never three. */
+async function sendDecision(decision, override) {
+  await api("/api/admissions/decide", {
+    method: "POST",
+    body: JSON.stringify({ id: ADM_SEL, decision, ...(override ? { overrideFailedChallenge: true } : {}) }),
+  });
+  toast(decision === "grant"
+    ? (override ? "Admitted WITH a recorded waiver of the failed challenge." : "Agent admitted by your decision.")
+    : "Agent refused.");
+  await loadAdmissions();
+}
+
 async function decideAdmission(decision, override) {
   if (!ADM_SEL) return;
   const q = decision === "grant"
@@ -684,14 +699,7 @@ async function decideAdmission(decision, override) {
     : "Refuse this agent? It will not be admitted.";
   if (!confirm(q)) return;
   try {
-    await api("/api/admissions/decide", {
-      method: "POST",
-      body: JSON.stringify({ id: ADM_SEL, decision, ...(override ? { overrideFailedChallenge: true } : {}) }),
-    });
-    toast(decision === "grant"
-      ? (override ? "Admitted WITH a recorded waiver of the failed challenge." : "Agent admitted by your decision.")
-      : "Agent refused.");
-    await loadAdmissions();
+    await sendDecision(decision, override);
   } catch (err) {
     // The server refuses to grant a failed challenge by default, and that refusal is the gate
     // working. The admin is still the root of authority, so they get a SECOND, explicit gesture
@@ -699,7 +707,11 @@ async function decideAdmission(decision, override) {
     // quietly look like a pass.
     if (decision === "grant" && /challenge_not_passed/.test(err.message)) {
       if (confirm("The server refused: this applicant did not pass the mechanical challenge.\n\nOverride and admit them anyway? The waiver will be recorded.")) {
-        return decideAdmission("grant", true);
+        try {
+          await sendDecision("grant", true);
+        } catch (retryErr) {
+          toast(retryErr.message, true);
+        }
       }
       return;
     }
