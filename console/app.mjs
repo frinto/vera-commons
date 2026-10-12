@@ -143,9 +143,66 @@ function readPrivateKey() {
   return loadIdentity(KEY_FILE);
 }
 
+function readTrustStatus() {
+  if (!existsSync(TRUST_FILE)) {
+    return { ok: true, state: 'clean', reason: null, counts: { roots: 0, permits: 0 }, bundle: { roots: [], permits: [] } };
+  }
+
+  let text;
+  try { text = readFileSync(TRUST_FILE, 'utf8'); }
+  catch {
+    const status = { ok: false, state: 'integrity-failure', reason: 'unreadable', counts: { roots: 0, permits: 0 } };
+    console.warn(`[trust] integrity failure: ${status.reason}`);
+    return status;
+  }
+
+  let bundle;
+  try { bundle = JSON.parse(text); }
+  catch {
+    const status = { ok: false, state: 'integrity-failure', reason: 'invalid_json', counts: { roots: 0, permits: 0 } };
+    console.warn(`[trust] integrity failure: ${status.reason}`);
+    return status;
+  }
+
+  const record = bundle !== null && typeof bundle === 'object' && !Array.isArray(bundle);
+  const validRoots = record && Array.isArray(bundle.roots)
+    && bundle.roots.every((root) => typeof root === 'string' && isAgentId(root));
+  const validPermits = record && Array.isArray(bundle.permits)
+    && bundle.permits.every((permit) => permit !== null && typeof permit === 'object' && !Array.isArray(permit)
+      && permit.v === 1 && (permit.type === 'grant' || permit.type === 'revoke')
+      && typeof permit.issuer === 'string' && isAgentId(permit.issuer)
+      && Number.isInteger(permit.seq) && permit.seq >= 1
+      && typeof permit.issuedAt === 'number' && Number.isFinite(permit.issuedAt)
+      && (permit.notAfter == null || (typeof permit.notAfter === 'number' && Number.isFinite(permit.notAfter)))
+      && typeof permit.sig === 'string' && permit.sig.length > 0
+      && (permit.type === 'grant'
+        ? ['observer', 'poster', 'moderator', 'admin'].includes(permit.level)
+          && typeof permit.grantee === 'string' && isAgentId(permit.grantee) && permit.grantee !== permit.issuer
+        : typeof permit.target === 'string' && isAgentId(permit.target)));
+  if (!record || !validRoots || !validPermits) {
+    const status = { ok: false, state: 'integrity-failure', reason: 'invalid_shape', counts: { roots: 0, permits: 0 } };
+    console.warn(`[trust] integrity failure: ${status.reason}`);
+    return status;
+  }
+
+  return {
+    ok: true,
+    state: 'valid',
+    reason: null,
+    counts: { roots: bundle.roots.length, permits: bundle.permits.length },
+    bundle,
+  };
+}
+
 function readTrust() {
-  if (!existsSync(TRUST_FILE)) return { roots: [], permits: [] };
-  try { return JSON.parse(readFileSync(TRUST_FILE, 'utf8')); } catch { return { roots: [], permits: [] }; }
+  const status = readTrustStatus();
+  if (!status.ok) {
+    const err = new Error(`Trust store integrity failure (${status.reason}).`);
+    err.code = 'TRUST_INTEGRITY';
+    err.trustStatus = status;
+    throw err;
+  }
+  return status.bundle;
 }
 
 /**
@@ -659,6 +716,11 @@ const server = createServer(async (req, res) => {
     }
 
     if (!tokenOK(req, url)) return json(res, 401, { error: 'bad token' });
+
+    if (url.pathname === '/api/trust/status' && req.method === 'GET') {
+      const { ok, state, reason, counts } = readTrustStatus();
+      return json(res, 200, { ok, state, reason, counts });
+    }
 
     if (url.pathname === '/api/state') return json(res, 200, snapshot());
 

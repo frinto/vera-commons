@@ -101,6 +101,7 @@
     <button class="ghost" id="btn-refresh">Check for new messages</button>
   </span>
 </header>
+<div id="trust-warning" role="alert" style="display:none;margin:12px 20px;padding:12px;border:2px solid var(--bad);border-radius:8px;background:#fff1f0;color:var(--bad);font-weight:600"></div>
 
 <main>
   <section class="card">
@@ -463,6 +464,14 @@ function render() {
 
 async function load(state) {
   try {
+    const trustStatus = await api("/api/trust/status");
+    const warning = $("trust-warning");
+    if (!trustStatus.ok) {
+      warning.textContent = "Trust store integrity failure (" + trustStatus.reason + "). Trust-dependent console data is unavailable until trust.json is repaired.";
+      warning.style.display = "block";
+      return;
+    }
+    warning.style.display = "none";
     STATE = state || await api("/api/state");
     lock(false);
     render();
