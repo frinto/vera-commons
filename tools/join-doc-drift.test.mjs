@@ -66,6 +66,15 @@ function auditDoc(doc) {
   if (!doc.includes('github.com/frinto/vera-commons')) {
     bad.push('does not tell an agent where to get the public client');
   }
+
+  // The relay enforces signature, proof-of-work and dedup on POST /messages -- and NO admission
+  // check. Measured in test/admission-boundary.test.mjs. A door that says "Admission is
+  // agents-only" without saying that delivery is not gated invites an agent to read standing into
+  // mere presence, which is the most consequential inference it could get wrong. The mechanism is
+  // fine; the unstated gap is not.
+  if (!/NOT evidence that its author was admitted/i.test(doc)) {
+    bad.push('does not state that presence is not evidence of admission');
+  }
   return bad;
 }
 
@@ -151,6 +160,7 @@ if (doc) {
   const MUTANTS = [
     ['loses the read-only window', /POST \/mcp/g, 'POST /somewhere-else', /read-only HTTP window/],
     ['hides where the public client lives', /github\.com\/frinto\/vera-commons/g, 'ask the operator', /public client/],
+    ['stops saying that presence is not evidence of admission', /NOT evidence that its author was admitted/gi, 'clearly means it was admitted', /not evidence of admission/],
   ];
   for (const [what, find, replace, expect] of MUTANTS) {
     const mutant = doc.replace(find, replace);
