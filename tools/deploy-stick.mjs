@@ -19,14 +19,24 @@
 // relay-operator-secret.txt already live on the stick and are the operator's credential store;
 // this script only ever writes CODE.
 //
-// Usage: node tools/deploy-stick.mjs [stickRoot]     (default E:\ — the DRIVE ROOT, not a subdir)
+// Usage: node tools/deploy-stick.mjs [stickRoot] [--check]    (default E:\ — the DRIVE ROOT)
 //
-// EXIT CODES — three different situations, three different codes, because the REMEDY differs and a
-// single "it failed" verdict sent operators to debug code that was fine:
-//   0  every check passed: the code is deployed AND the console runs.
+// --check ASKS THE DRIFT QUESTION WITHOUT WRITING ANYTHING, and it exists because the script could
+// not previously answer it. The copy ran first and the comparison ran second, so the act of checking
+// silently REPAIRED the thing being checked and the answer was always "in sync". That is not a
+// hypothetical: a stick ran for hours with an OLDER src/policy.mjs (the admission rules the admin
+// console enforces) and no src/frame.mjs at all, while every deploy reported success -- because every
+// deploy had already overwritten the evidence by the time it looked. Drift is only observable BEFORE
+// the copy, which is why --check stops short of it: no copy, no launcher write, and no start-check
+// (the console creates its data dir on the stick as it runs, so starting it is a write).
+//
+// EXIT CODES — different situations, different codes, because the REMEDY differs and a single
+// "it failed" verdict sent operators to debug code that was fine:
+//   0  every check passed: the code is deployed AND the console runs (or, under --check, the stick
+//      matches the repo and nothing was written).
 //   1  the DEPLOYMENT is wrong: a file is missing, the copy drifted, the layout is wrong, or the
-//      console will not serve.
-//   2  bad invocation: the target is not a drive root.
+//      console will not serve (under --check: the stick has DRIFTED from the repo).
+//   2  bad invocation: the target is not a drive root, or an unrecognised flag was passed.
 //   3  PRECONDITION not met: the code deployed correctly, but this volume has no operator credentials
 //      yet, so the checks that need an unlocked console are NOT RUN rather than failed. The remedy is
 //      the key ceremony, not a code fix. See tools/stick-preconditions.mjs for why this is separate.
@@ -60,7 +70,22 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const STICK = resolve(process.argv[2] || 'E:\\');
+
+// FAIL CLOSED ON FLAGS, BEFORE ANYTHING IS TOUCHED. This script writes to a physical device, so a
+// flag it does not understand must stop it rather than be ignored: an operator who typed the wrong
+// thing would otherwise believe they asked for one behaviour and get another -- and the other one
+// was a write. (Same defect class as mint-verifier.mjs, where an unrecognised --dir was silently
+// ignored and the command went to the real credential store.)
+const ARGV = process.argv.slice(2);
+const KNOWN_FLAGS = ['--check'];
+const unknownFlags = ARGV.filter((a) => a.startsWith('-') && !KNOWN_FLAGS.includes(a));
+if (unknownFlags.length) {
+  console.log('refusing: unrecognised flag(s): ' + unknownFlags.join(', '));
+  console.log('accepted: ' + KNOWN_FLAGS.join(', ') + '   plus an optional stick root, e.g. E:\\');
+  process.exit(2);
+}
+const CHECK_ONLY = ARGV.includes('--check');
+const STICK = resolve(ARGV.find((a) => !a.startsWith('-')) || 'E:\\');
 
 // Refuse to deploy into a directory that is not a drive root: the whole 503 bug was a wrong root,
 // and silently accepting one would reproduce it.
@@ -136,21 +161,25 @@ if (!existsSync(STICK)) {
 }
 
 // --- 1. copy -----------------------------------------------------------------
-console.log('');
-console.log('--- copying code (secrets are never touched) ---');
-let copied = 0;
-for (const t of TREES) {
-  if (!existsSync(t.from)) { bad('missing source tree: ' + relative(ROOT, t.from)); continue; }
-  copied += copyTree(t.from, t.to);
+// Skipped entirely under --check. This is the whole point of the flag: the comparison in step 2
+// cannot report drift that step 1 has already overwritten.
+if (!CHECK_ONLY) {
+  console.log('');
+  console.log('--- copying code (secrets are never touched) ---');
+  let copied = 0;
+  for (const t of TREES) {
+    if (!existsSync(t.from)) { bad('missing source tree: ' + relative(ROOT, t.from)); continue; }
+    copied += copyTree(t.from, t.to);
+  }
+  for (const f of FILES) {
+    if (!existsSync(f.from)) { bad('missing source file: ' + relative(ROOT, f.from)); continue; }
+    const parent = dirname(f.to);
+    if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
+    copyFileSync(f.from, f.to);
+    copied++;
+  }
+  console.log('  copied ' + copied + ' file(s)');
 }
-for (const f of FILES) {
-  if (!existsSync(f.from)) { bad('missing source file: ' + relative(ROOT, f.from)); continue; }
-  const parent = dirname(f.to);
-  if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
-  copyFileSync(f.from, f.to);
-  copied++;
-}
-console.log('  copied ' + copied + ' file(s)');
 
 // --- 1b. every relative import in the deployed console must resolve ON THE STICK ---------------
 // The checkout CANNOT catch this class of bug: the missing file is sitting right there in the
@@ -158,7 +187,10 @@ console.log('  copied ' + copied + ' file(s)');
 // can answer the question, so it is asked of what was actually copied.
 {
   const deployedDir = join(STICK, 'console');
-  const deployed = readdirSync(deployedDir).filter((f) => f.endsWith('.mjs'));
+  // The guard is here because --check does not copy: in deploy mode this directory has just been
+  // created above, so an unguarded readdir would work in the only mode that used to exist and throw
+  // ENOENT the first time the new mode met an empty volume. A missing directory must be REPORTED.
+  const deployed = existsSync(deployedDir) ? readdirSync(deployedDir).filter((f) => f.endsWith('.mjs')) : [];
   let checked = 0;
   for (const f of deployed) {
     const src = readFileSync(join(deployedDir, f), 'utf8');
@@ -177,7 +209,9 @@ console.log('  copied ' + copied + ' file(s)');
 // launcher sat at the stick root doing `cd /d "%~dp0"` + `node app.mjs` while the app lived in
 // console/, so double-clicking it printed a Node module error and nothing opened.
 const LAUNCHER = join(STICK, 'START-HERE.cmd');
-writeFileSync(LAUNCHER, [
+// Not written under --check. It is a write, and writing it would also MASK a stick whose launcher is
+// missing -- the layout check below is supposed to notice exactly that.
+if (!CHECK_ONLY) writeFileSync(LAUNCHER, [
   '@echo off',
   'title Agent Commons Console',
   'cd /d "%~dp0console"',
@@ -208,7 +242,7 @@ writeFileSync(LAUNCHER, [
   'pause',
   '',
 ].join('\r\n'), 'utf8');
-console.log('  wrote ' + relative(STICK, LAUNCHER) + ' (the thing to double-click)');
+if (!CHECK_ONLY) console.log('  wrote ' + relative(STICK, LAUNCHER) + ' (the thing to double-click)');
 
 // --- 2. the deployed bytes must equal the repo ---------------------------------
 console.log('');
@@ -248,6 +282,22 @@ for (const { p, secret } of LAYOUT) {
   if (existsSync(p)) ok('present: ' + relative(STICK, p));
   else if (secret) console.log('  ----  absent, and this tool will not create it: ' + relative(STICK, p));
   else bad('MISSING: ' + relative(STICK, p) + '  (the console will not start without this)');
+}
+
+// --- CHECK-ONLY STOPS HERE ----------------------------------------------------------------------
+// Everything below STARTS the deployed console, and starting it is not free of side effects: the
+// console creates its own data dir on the stick (DATA_DIR = <stick>/console/data). --check promised
+// to write nothing, so it ends here, having answered both questions it can answer without writing:
+// do the deployed bytes still equal the repo, and is the layout the console needs present.
+if (CHECK_ONLY) {
+  console.log('');
+  if (failures) {
+    console.log(failures + ' check(s) FAILED — the stick has DRIFTED from the repo. Nothing was written.');
+    console.log('Run the same command without --check to repair it.');
+    process.exit(1);
+  }
+  console.log('CHECK OK: the stick matches the repo. Nothing was written.');
+  process.exit(0);
 }
 
 // --- 2b. THE PRECONDITION. Everything below starts the console and asserts what it SERVES, and the
