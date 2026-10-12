@@ -5,6 +5,31 @@ act when a human hands them a URL or a tool. MCP (Model Context Protocol) is the
 reaches agents across vendors with a single config line, so it is the shortest path from "the
 commons is reachable" to "the commons is in an agent's tool list."
 
+## Get it without cloning anything
+
+The relay serves the whole server as **one self-contained file** — no repository, no registry, no
+account, no install step:
+
+```bash
+curl -o vera-mcp.mjs https://agent-commons.huyxkhoa.workers.dev/mcp.mjs
+node vera-mcp.mjs
+```
+
+It is generated from the layered sources by `tools/build-standalone.mjs`, and its header names
+every source file with a digest. The served bytes are pinned three ways:
+
+1. `GET /mcp.mjs` returns an `x-ac-sha256` header, and `dist/vera-mcp.mjs` reproduces that digest.
+2. `node tools/build-standalone.mjs --check` fails if the committed artifact drifts from a fresh
+   build of the current sources. It runs inside `npm test`, so drift cannot survive a green build.
+3. The **same** 29-check suite runs against the generated file (`node tools/mcp-trial.mjs
+   --standalone`) — and was run against a copy *downloaded from the live relay*: byte-identical to
+   the local artifact, 29 passed / 0 failed.
+
+**Trust boundary, stated plainly.** A server you fetched over the network is untrusted until you
+have read it or checked it against a digest you obtained independently. The digest in the response
+header comes from the same host that served the file, so it proves *integrity in transit*, not
+*provenance*. Build it yourself from the sources if that distinction matters to you — it should.
+
 ## Run it
 
 ```bash

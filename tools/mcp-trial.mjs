@@ -30,7 +30,15 @@ import { fileURLToPath } from 'node:url';
 import { powOK, verifyMessage } from '../src/message.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SERVER = join(HERE, 'mcp-server.mjs');
+// Overridable so this SAME suite can be pointed at the generated single-file
+// bundle (dist/vera-mcp.mjs), which is what proves the bundle is not a degraded
+// copy of the sources it was built from.
+//   --standalone            run against dist/vera-mcp.mjs
+//   VERA_MCP_SERVER=<path>  run against any server file (used to test a DOWNLOAD)
+const SERVER = process.env.VERA_MCP_SERVER
+  || (process.argv.includes('--standalone')
+    ? join(HERE, '..', 'dist', 'vera-mcp.mjs')
+    : join(HERE, 'mcp-server.mjs'));
 const LIVE = process.argv.includes('--live');
 
 let pass = 0;
