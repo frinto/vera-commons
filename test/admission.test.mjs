@@ -81,7 +81,12 @@ try {
   // `via` was added deliberately too: a decision reached over the relay is adopted rather than made
   // here, and a reader who cannot tell those apart has to take a record's word for its own
   // provenance. This assertion failing is the review, not an obstacle to it.
-  assert.deepEqual(Object.keys(listed).sort(), ['id', 'joinKey', 'short', 'issuedAt', 'expiresAt', 'msRemaining', 'status', 'verdict', 'agentId', 'bound', 'boundVia', 'relayRequestId', 'via', 'decision', 'grantee', 'decidedBy', 'interview'].sort());
+  //
+  // `overrodeFailedChallenge` was added deliberately after this test CAUGHT it missing: the record
+  // kept the waiver but the projection did not publish it, so a granted-by-waiver admission would
+  // render exactly like one that passed on merit. It is the one field here not derivable from any
+  // other — `verdict.ok` already carries whether the challenge passed.
+  assert.deepEqual(Object.keys(listed).sort(), ['id', 'joinKey', 'short', 'issuedAt', 'expiresAt', 'msRemaining', 'status', 'verdict', 'agentId', 'bound', 'boundVia', 'relayRequestId', 'via', 'decision', 'grantee', 'decidedBy', 'overrodeFailedChallenge', 'interview'].sort());
   // No key was ever attached to this record, so it must not claim a binding route either — a null
   // `boundVia` is the honest answer, and `'local'` here would be a small lie about a field whose
   // whole purpose is to say which bytes to re-derive.
@@ -218,6 +223,58 @@ try {
   assert.equal(noInterview.manager.list()[0].status, 'decided');
   assert.equal(noInterview.manager.list()[0].interview, null);
   console.log('PASS an absent optional interview does not block admin decision');
+
+  // --- THE MECHANICAL CHALLENGE MUST BE PASSED, NOT MERELY ANSWERED ---------------------------
+  // 'answered' never meant 'passed': answer() records a failed attempt as answered so the operator
+  // can rule on it. Until this was enforced, that status was the ONLY condition on a grant, so a
+  // 0/20 applicant who had bound a key could be granted and the grant was indistinguishable from one
+  // that passed — and granteeFromAdmission() hands that grantee to a permit either way. Measured
+  // before the fix, not reasoned: decide(grant) returned a grant naming the grantee.
+  {
+    const failing = fixture({ items: 20 });
+    const c = failing.manager.start('join-key-failed-grant', { agentId: AGENT_ID });
+    const denied = failing.manager.answer(c.id, Array(20).fill('incorrect'));
+    assert.equal(denied.ok, false);
+    assert.equal(failing.manager.list()[0].status, 'answered', 'a failed attempt is still an attempt');
+
+    const g = failing.manager.decide(c.id, 'grant', 'admin-agent-10');
+    assert.equal(g.ok, false, 'a FAILED challenge must not be grantable by default');
+    assert.equal(g.reason, 'challenge_not_passed', `expected challenge_not_passed, got ${JSON.stringify(g)}`);
+
+    // Closing a bad record must never be blocked by the score, or a failed applicant is stuck.
+    assert.equal(failing.manager.decide(c.id, 'refuse', 'admin-agent-10').decision, 'refuse');
+  }
+  console.log('PASS a failed challenge cannot be granted by default, but can still be refused');
+
+  // The override is legitimate — the admin is the root of authority — but it must be VISIBLE. An
+  // override that reads like a pass is how the mechanical test becomes decorative.
+  {
+    const over = fixture({ items: 20 });
+    const c = over.manager.start('join-key-override', { agentId: AGENT_ID });
+    over.manager.answer(c.id, Array(20).fill('incorrect'));
+    const g = over.manager.decide(c.id, 'grant', 'admin-agent-11', { overrideFailedChallenge: true });
+    assert.equal(g.decision, 'grant', `an explicit override must still grant: ${JSON.stringify(g)}`);
+    assert.equal(g.overrodeFailedChallenge, true, 'the result must say the challenge was waived');
+    assert.equal(over.manager.list()[0].overrodeFailedChallenge, true, 'and the record must keep it');
+    assert.equal(over.manager.list()[0].grantee, AGENT_ID);
+  }
+  console.log('PASS an explicit override grants AND records that the challenge was waived');
+
+  // ...and a PASSING applicant must be completely unaffected, or the enforcement makes the gate
+  // unusable and the next person reverts it.
+  {
+    const good = fixture({ items: 20 });
+    const c = good.manager.start('join-key-passes', { agentId: AGENT_ID });
+    assert.equal(good.manager.answer(c.id, solve(c.challenge)).ok, true);
+    const g = good.manager.decide(c.id, 'grant', 'admin-agent-12');
+    assert.equal(g.decision, 'grant');
+    assert.equal(g.overrodeFailedChallenge, undefined, 'a grant on merit carries no override marker');
+    // `list()` normalises the absent marker to null (it projects every field explicitly), so the
+    // assertion is null and not undefined — assert/strict distinguishes the two, which is the point.
+    assert.equal(good.manager.list()[0].overrodeFailedChallenge, null);
+    assert.equal(good.manager.list()[0].grantee, AGENT_ID);
+  }
+  console.log('PASS a passing applicant still grants, carrying no override marker');
 } finally {
   for (const dir of roots) rmSync(dir, { recursive: true, force: true });
 }

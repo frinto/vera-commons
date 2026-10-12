@@ -829,14 +829,24 @@ const server = createServer(async (req, res) => {
       // whether or not the admissions library is wired.
       if (url.pathname === '/api/admissions/decide' && req.method === 'POST') {
         const identity = requireAdmin();
-        const { id, decision } = await readBody(req);
+        const { id, decision, overrideFailedChallenge } = await readBody(req);
         if (!id) return json(res, 400, { error: 'No admission id given.' });
         if (decision !== 'grant' && decision !== 'refuse') return json(res, 400, { error: 'decision must be grant or refuse.' });
         const lib = await loadAdmissionLib();
         if (!lib) return json(res, 501, { error: `Admissions is not wired: ${admissionsError}`, code: 'NOT_WIRED' });
-        const r = lib.decide(String(id), decision, identity.agentId);
-        if (r.reason !== undefined) return json(res, 409, { error: r.reason, code: r.reason });
-        return json(res, 200, { decided: decision, id: r.id, by: r.by, grantee: r.grantee ?? null });
+        // The override must be asked for EXPLICITLY and by name. Defaulting it on would restore the
+        // hole this route used to have, where a failed challenge was granted and nothing said so.
+        const r = lib.decide(String(id), decision, identity.agentId,
+          overrideFailedChallenge === true ? { overrideFailedChallenge: true } : {});
+        if (r.reason !== undefined) {
+          return json(res, 409, { error: r.reason, code: r.reason, ...(r.hint ? { hint: r.hint } : {}) });
+        }
+        return json(res, 200, {
+          decided: decision, id: r.id, by: r.by, grantee: r.grantee ?? null,
+          // Carried through so the admin is told the challenge was waived, rather than reading a
+          // success that looks identical to a pass.
+          ...(r.overrodeFailedChallenge ? { overrodeFailedChallenge: true } : {}),
+        });
       }
 
       const lib = await loadAdmissionLib();
@@ -870,6 +880,10 @@ const server = createServer(async (req, res) => {
           // reading a record's word for its own provenance.
           via: r.via ?? 'local',
           relayRequestId: r.relayRequestId ?? null,
+          // Whether an admin WAIVED a failed challenge to admit this record. The score itself is
+          // already here as `verdict.ok`; this is the fact nothing else carries, and without it a
+          // granted-by-waiver admission renders exactly like one that passed on its merits.
+          overrodeFailedChallenge: r.overrodeFailedChallenge ?? null,
           interview: r.interview ?? null,      // free text the agent wrote; shown, never scored
         }));
         return json(res, 200, { admissions: rows });

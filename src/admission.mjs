@@ -186,6 +186,12 @@ export function createAdmissionManager({
         decision: record.decision ?? null,
         grantee: record.grantee ?? null,
         decidedBy: record.decidedBy ?? null,
+        // Whether an admin WAIVED a failed challenge in order to admit this record. `decision:'grant'`
+        // cannot distinguish a pass from a waiver, and `verdict` cannot either once the record is
+        // decided -- so without this field the two render identically, which is precisely how the
+        // score became decorative. (The score itself is already published as `verdict.ok`; this is
+        // the one fact here that is NOT derivable from any other field.)
+        overrodeFailedChallenge: record.overrodeFailedChallenge ?? null,
         interview: record.interview ? {
           statement: record.interview.statement,
           answers: record.interview.answers,
@@ -443,7 +449,26 @@ export function createAdmissionManager({
   }
 
   // A grant decision is an admin record only; it never issues a permit or authority.
-  function decide(id, decision, adminAgentId) {
+  //
+  // THE SCORE IS ENFORCED HERE, and it used to be enforced nowhere. `answer()` sets status
+  // 'answered' whatever the score -- correctly, because a failed attempt is still an attempt and the
+  // operator has to be able to refuse it -- so 'answered' never meant 'passed'. This function then
+  // gated only on that status, which meant a 0/20 applicant who had bound a key could be GRANTED,
+  // and the grant was indistinguishable from one that passed. Measured, not reasoned: the probe
+  // (`.tmp/probe-failed-grant.mjs`) returned a full grant naming the grantee for a 0/20 score.
+  //
+  // Why it mattered: granteeFromAdmission() reads only status+decision+grantee, so that grant flowed
+  // into a permit and the agent could SPEAK. The relay path never had this hole -- the console
+  // derives granted/refused from `verdict.ok`, so a failed remote applicant is refused
+  // automatically -- which left the gate enforced at ONE CALL SITE instead of in the shared seam,
+  // giving a local applicant a different standard from a remote one. That is the exact drift this
+  // file warns about elsewhere for the interview rules.
+  //
+  // `options.overrideFailedChallenge` exists because the admin is the root of authority and may
+  // legitimately want to admit someone whose challenge was wrecked by a parser bug. What is not
+  // acceptable is that such a grant be SILENT: the override is explicit, and it is recorded on the
+  // record so the provenance survives into every listing.
+  function decide(id, decision, adminAgentId, options = {}) {
     if (!['grant', 'refuse'].includes(decision)) return { ok: false, reason: 'bad_decision' };
     if (typeof adminAgentId !== 'string' || !adminAgentId) return { ok: false, reason: 'admin_agent_required' };
     const store = readStore();
@@ -457,13 +482,36 @@ export function createAdmissionManager({
     // authorise nobody in particular, which is worse than refusing because it LOOKS like an
     // admission happened. Refusing is always allowed — closing a bad record needs no grantee.
     if (decision === 'grant' && !record.agentId) return { ok: false, reason: 'cannot_grant_unbound_admission' };
+    // Checked AFTER the bind rule so the reason stays "cannot_grant_unbound_admission" for an
+    // unbound record: that reason names the missing thing the operator has to fix, and reordering it
+    // would send them to re-run a challenge that was never the problem.
+    let overrode = false;
+    if (decision === 'grant') {
+      const passed = record.verdict?.ok === true;
+      if (!passed) {
+        if (options?.overrideFailedChallenge !== true) {
+          return {
+            ok: false,
+            reason: 'challenge_not_passed',
+            verdict: record.verdict ?? null,
+            hint: 'This applicant did not pass the mechanical challenge. Send decision "refuse", or pass { overrideFailedChallenge: true } to admit them anyway — the override is recorded on the admission.',
+          };
+        }
+        overrode = true;
+      }
+    }
     record.status = 'decided';
     record.decision = decision;
     record.decidedBy = adminAgentId;
     record.grantee = decision === 'grant' ? record.agentId : null;
     record.decidedAt = timestamp();
+    // Only ever set when a failure was actually overridden, so its ABSENCE means "the score stood"
+    // and its presence cannot be confused with a grant that passed on its own merits.
+    if (overrode) record.overrodeFailedChallenge = true;
     writeStore(store);
-    return { id, decision, by: adminAgentId, grantee: record.grantee };
+    // The marker is carried in the RESULT as well, and only on an override, so a caller cannot report
+    // a success without saying that the challenge was waived.
+    return { id, decision, by: adminAgentId, grantee: record.grantee, ...(overrode ? { overrodeFailedChallenge: true } : {}) };
   }
 
   // Adopt a decision that was reached ELSEWHERE — over the relay, by an operator this node trusts.
