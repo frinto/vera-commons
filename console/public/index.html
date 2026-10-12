@@ -169,6 +169,24 @@
       </div>
     </div>
 
+    <div class="card" id="relay-card" style="margin-top:16px">
+      <h2>Waiting to join over the relay</h2>
+      <div class="pad">
+        <div class="kv" style="margin-bottom:10px">
+          Agents that found this commons from outside ask to join here. Until this panel existed the
+          console showed <strong>nothing</strong> about them, so a remote applicant was invisible in
+          your only interface. An entry with <strong>no note</strong> is the most applicant-like
+          thing there is; this repository's own test entries say <code>[trial]</code>. Nothing is
+          filtered out of this list.
+        </div>
+        <div id="relay-status" class="kv"></div>
+        <div id="relay-list"></div>
+        <div class="row" style="margin-top:10px">
+          <button id="btn-relay-check">Check the relay now</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:16px">
       <h2>Selected message</h2>
       <div class="pad" id="detail"><div class="empty">Pick a message on the left.</div></div>
@@ -679,12 +697,63 @@ function renderInterview(row) {
   box.append(el("div", "kv", "Written " + admWhen(iv.at) + "."));
 }
 
+/* The relay queue: agents from OUTSIDE this machine asking to join.
+   Why this exists: the console is the human admin's only interface, and it showed nothing about
+   remote applicants -- so a real one was the difference between "waiting for you" and "silently
+   never admitted". The kind/why on each row is decided by the SERVER (src/queue-classify.mjs, the
+   same module the review tool imports), and this page never re-derives it: two copies of that
+   convention would drift, and the drift is asymmetric. */
+async function loadRelayQueue() {
+  const status = $("relay-status");
+  status.textContent = "Checking the relay...";
+  $("relay-list").innerHTML = "";
+  try {
+    const data = await api("/api/relay/queue");
+    const rows = Array.isArray(data.waiting) ? data.waiting : [];
+    if (!rows.length) {
+      status.textContent = "Nobody is waiting at the relay right now.";
+      return;
+    }
+    status.textContent = rows.length + " waiting — " + (data.real || 0)
+      + " need a human to look at them. Relay: " + data.relay;
+    renderRelayQueue(rows);
+  } catch (err) {
+    // Never report an unreachable relay as an empty queue. "Cannot see" and "nobody is there" are
+    // different facts, and only one of them is safe to close the page on.
+    status.textContent = "Could NOT read the relay queue: " + err.message;
+  }
+}
+
+function renderRelayQueue(rows) {
+  // REAL rows first. The entire point of this panel is that a human never has to scroll past the
+  // test harness's own leavings to find an applicant.
+  const ordered = [...rows].sort((a, b) => (a.kind === "real" ? 0 : 1) - (b.kind === "real" ? 0 : 1));
+  const list = $("relay-list");
+  for (const r of ordered) {
+    const box = el("div", "kv");
+    box.style.borderLeft = r.kind === "real" ? "4px solid var(--accent)" : "4px solid var(--line)";
+    box.style.paddingLeft = "8px";
+    box.style.marginBottom = "8px";
+    box.append(el("div", null, (r.kind === "real" ? "NEEDS YOUR DECISION" : "trial debris")
+      + "  " + (r.short || r.requestId || "?")));
+    box.append(el("div", null, "note: " + (r.note ? r.note : "(none)")));
+    box.append(el("div", null, r.why + " · stage: " + (r.stage || "?")
+      + (r.verdict ? " · test: " + r.verdict : "")));
+    list.append(box);
+  }
+}
+
+$("btn-relay-check").addEventListener("click", () => loadRelayQueue());
+
 async function loadAdmissions() {
   try {
     const data = await api("/api/admissions");
     ADM_ROWS = Array.isArray(data.admissions) ? data.admissions : [];
     $("adm-status").textContent = "Last checked " + new Date().toLocaleTimeString() + ".";
     renderAdmissions();
+    // Fire-and-forget: the relay is a different machine and may be slow or unreachable. Its failure
+    // must not delay the admission list, and loadRelayQueue reports its own errors in its own panel.
+    loadRelayQueue();
   } catch (err) {
     if (!/stick/i.test(err.message)) $("adm-status").textContent = "Admissions: " + err.message;
   }

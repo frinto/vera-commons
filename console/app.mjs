@@ -38,6 +38,7 @@ import { granteeFromAdmission, admissionFromVerdict, liveGrantFor } from './src/
 import { CommonsNode } from './src/node.mjs';
 import { censusFrom } from './src/census.mjs';
 import { readRetraction, applyRetractions } from './src/retract.mjs';
+import { classifyNote, TRIAL } from './src/queue-classify.mjs';
 
 const APP = dirname(fileURLToPath(import.meta.url));
 const USB_ROOT = resolve(APP, '..');
@@ -959,9 +960,21 @@ const server = createServer(async (req, res) => {
             stage: local ? local.status : 'new',
             localId: local ? local.id : null,
             verdict: local ? admissionVerdict(local.verdict) : null,
+            // The SAME classifier the review tool uses, so the console and the tool cannot disagree
+            // about who is an applicant. Computed HERE and sent to the page rather than recomputed
+            // there: the page must not own a second copy of the convention, because the two copies
+            // would drift and the drift is asymmetric -- a real applicant labelled debris is
+            // silently never admitted.
+            ...classifyNote(q.note ?? null),
           };
         });
-        return json(res, 200, { waiting, relay: RELAY, count: waiting.length });
+        return json(res, 200, {
+          waiting,
+          relay: RELAY,
+          count: waiting.length,
+          // Counted here so the page never has to re-derive the rule from the rows it was given.
+          real: waiting.filter((w) => w.kind !== TRIAL).length,
+        });
       }
 
       // Mint a challenge here, then publish it — WITH the taxonomy it is scored against.

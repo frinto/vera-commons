@@ -35,50 +35,13 @@ const RELAY = process.env.COMMONS_URL || 'https://agent-commons.huyxkhoa.workers
 const SECRET_FILE = process.env.AC_OPERATOR_SECRET_FILE
   || join(homedir(), '.dsh', 'agent-commons', 'relay-operator-secret.txt');
 
-/**
- * The labels this repository's own tools have written into real requests. Every one of these was
- * observed in the live queue on 2026-10-12. Kept as data, not as a regex, so it can be audited.
- */
-export const LEGACY_TRIAL_NOTES = [
-  'joiner-path-trial',
-  'console bridge trial',
-  'operator-command-trial',
-  'live remote trial',
-  'vendor gate trial',
-];
-
-export const TRIAL = 'trial';
-export const REAL = 'real';
-
-/**
- * Classify one queue entry.
- *
- * @returns {{kind: string, why: string}}
- */
-export function classifyNote(note) {
-  if (typeof note === 'string' && /^\s*\[trial\]/i.test(note)) {
-    return { kind: TRIAL, why: 'carries the [trial] marker' };
-  }
-  if (typeof note === 'string' && LEGACY_TRIAL_NOTES.includes(note.trim())) {
-    return { kind: TRIAL, why: 'matches a documented legacy trial label' };
-  }
-  if (typeof note !== 'string' || note.trim() === '') {
-    // NO NOTE AT ALL is the single most applicant-like thing an entry can look like: a real
-    // joiner following the door's instructions has no reason to fill in a note for us.
-    return { kind: REAL, why: 'no note -- a human should look at this' };
-  }
-  return { kind: REAL, why: 'note does not match any trial marker' };
-}
-
-/** Whole-queue verdict, so an unreachable or empty queue cannot be confused with a clean one. */
-export function triage(requests) {
-  const rows = requests.map((r) => ({ ...r, ...classifyNote(r.note) }));
-  return {
-    rows,
-    trials: rows.filter((r) => r.kind === TRIAL),
-    real: rows.filter((r) => r.kind === REAL),
-  };
-}
+// The classifier now lives in src/ so that the CONSOLE applies the same judgement as this tool.
+// Two copies of one convention drift, and this drift is asymmetric: a real applicant mislabelled as
+// debris is silently never admitted, while a debris entry shown as an applicant costs ten seconds of
+// reading. `import` gives main() a local binding; the `export ... from` keeps this tool's public
+// surface identical for its test.
+import { triage } from '../src/queue-classify.mjs';
+export { LEGACY_TRIAL_NOTES, TRIAL, REAL, classifyNote, triage } from '../src/queue-classify.mjs';
 
 function main() {
   const asJson = process.argv.includes('--json');
