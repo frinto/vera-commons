@@ -673,17 +673,36 @@ async function loadAdmissions() {
   }
 }
 
-async function decideAdmission(decision) {
+async function decideAdmission(decision, override) {
   if (!ADM_SEL) return;
   const q = decision === "grant"
-    ? "Admit this agent into the network? This is your decision as admin."
+    ? (override
+      ? "This applicant did NOT pass the mechanical challenge.\n\nAdmit them anyway? The waiver is recorded on the admission and shown in this list."
+      : "Admit this agent into the network? This is your decision as admin.")
     : "Refuse this agent? It will not be admitted.";
   if (!confirm(q)) return;
   try {
-    await api("/api/admissions/decide", { method: "POST", body: JSON.stringify({ id: ADM_SEL, decision }) });
-    toast(decision === "grant" ? "Agent admitted by your decision." : "Agent refused.");
+    await api("/api/admissions/decide", {
+      method: "POST",
+      body: JSON.stringify({ id: ADM_SEL, decision, ...(override ? { overrideFailedChallenge: true } : {}) }),
+    });
+    toast(decision === "grant"
+      ? (override ? "Admitted WITH a recorded waiver of the failed challenge." : "Agent admitted by your decision.")
+      : "Agent refused.");
     await loadAdmissions();
-  } catch (err) { toast(err.message, true); }
+  } catch (err) {
+    // The server refuses to grant a failed challenge by default, and that refusal is the gate
+    // working. The admin is still the root of authority, so they get a SECOND, explicit gesture
+    // instead of a dead end -- and the server records that the score was waived, so this can never
+    // quietly look like a pass.
+    if (decision === "grant" && /challenge_not_passed/.test(err.message)) {
+      if (confirm("The server refused: this applicant did not pass the mechanical challenge.\n\nOverride and admit them anyway? The waiver will be recorded.")) {
+        return decideAdmission("grant", true);
+      }
+      return;
+    }
+    toast(err.message, true);
+  }
 }
 
 /* ---- AI census: only numbers the backend just computed. Failure shows "unavailable", never an old count. ---- */
