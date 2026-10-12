@@ -96,7 +96,7 @@ const REGISTRY = [
     // console's media gate. So it is registered (one command can run it) but it does NOT silently
     // count as passing when the precondition is absent -- see `needsStick` below.
     needsStick: true,
-    why: 'The relay -> permit bridge, against a LOCAL stand-in relay that is allowed to LIE (substituted grantee, untrusted operator, invented decision). No live traffic. Nothing ran this until the coverage guard in test/trial-coverage.test.mjs found it.',
+    why: 'The relay -> permit bridge, against a LOCAL stand-in relay that is allowed to LIE (substituted grantee, untrusted operator, invented decision). No live traffic. Nothing ran this until the coverage guard in test/trial-coverage.test.mjs found it. RAN 2026-10-12 against the DEPLOYED code on the real stick (AC_STICK=E:\\ AC_FROM_STICK=1): exit 0, BRIDGE TRIAL PASSED -- a trusted operator + signed bind was adopted (HTTP 200, decision=grant, grantee named from the BIND), and the tamper arms held: a relay that substitutes the grantee was refused (409 bind_bad_signature), the substituted key gained nothing, and a third party could not bind a key that was not theirs. The stick is read-only here (everything is copied into a temp dir) and was verified unmodified afterwards.',
   },
   {
     id: 'stranger-live',

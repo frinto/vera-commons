@@ -124,12 +124,65 @@ export function loadVerifier(path) {
   return value;
 }
 
+const VALUE_FLAGS = ['--out', '--dir', '--items', '--window-ms'];
+const BOOL_FLAGS = ['--force', '--stats', '--show-fingerprint', '--help', '-h'];
+
+/**
+ * Reject flags this tool does not implement, BEFORE it acts on anything.
+ *
+ * WHY THIS EXISTS, from something that actually happened while provisioning a throwaway stick:
+ * the flag that chooses where the secret is WRITTEN is `--out`, and its default is the LIVE
+ * credential store, `E:\verifier.json`. `--dir` is also a real flag here -- but it means something
+ * else entirely: the admissions directory RECORDED INSIDE verifier.json. So running
+ * `mint-verifier.mjs --dir <somewhere>` does not redirect the write anywhere. It silently proceeds
+ * against the real stick, and the ONLY thing that stopped it was the existing-file guard. On a
+ * stick with no verifier yet, that same command would have minted a NEW SALT over the live one,
+ * invalidating every challenge already issued.
+ *
+ * A typo'd flag must never be able to "redirect nothing" and still act on the real store. Failing
+ * closed on invocation (exit 2, naming the offender) is the fix; the exit-code contract already
+ * reserves 2 for a bad invocation.
+ */
+function unknownFlags(argv) {
+  const unknown = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith('-')) continue;
+    if (BOOL_FLAGS.includes(a)) continue;
+    if (VALUE_FLAGS.includes(a)) { i++; continue; }
+    unknown.push(a);
+  }
+  return unknown;
+}
+
+const USAGE = [
+  'usage: node tools/mint-verifier.mjs [--out <path>] [--force] [--dir <rel>] [--items <n>] [--window-ms <ms>]',
+  '',
+  '  --out <path>        where the secret is WRITTEN              (default E:\\verifier.json)',
+  '  --dir <rel>         admissions dir RECORDED INSIDE the file  (default data/admissions)',
+  '  --items <n>         challenge items per admission            (default 150)',
+  '  --window-ms <ms>    answer window in ms                      (default 45000)',
+  '  --force             replace an existing verifier -- THIS CHANGES THE SALT',
+  '  --stats             print knowledge-base stats and exit',
+  '  --show-fingerprint  print the existing salt fingerprint and exit',
+].join('\n');
+
 function main(argv) {
   const arg = (name, fallback) => {
     const i = argv.indexOf(name);
     return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
   };
   const flag = (name) => argv.includes(name);
+
+  const unknown = unknownFlags(argv);
+  if (unknown.length) {
+    process.stderr.write(`unrecognised flag(s): ${unknown.join(', ')}\n\n${USAGE}\n`);
+    return 2;
+  }
+  if (flag('--help') || flag('-h')) {
+    process.stdout.write(`${USAGE}\n`);
+    return 0;
+  }
 
   const out = resolve(arg('--out', 'E:\\verifier.json'));
   const force = flag('--force');
