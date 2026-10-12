@@ -25,6 +25,7 @@ import { dirname, join } from 'node:path';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const TRIAL = join(ROOT, 'tools', 'live-remote-trial.mjs');
 const RELAY = join(ROOT, 'worker', 'worker.js');
+const ONRAMP = join(ROOT, 'tools', 'join-apply.mjs');
 
 /**
  * The relay's documented hard order. Bind is third and it is the one step that cannot be done late --
@@ -38,7 +39,32 @@ const HARD_ORDER = ['request', 'challenge', 'bind', 'answer', 'verdict'];
  * without it `request` would also match inside `/admission/requests`, and the queue-listing call at
  * the top of the trial would be mistaken for the joiner opening a request.
  */
+
+/**
+ * Blanks out comments, preserving LENGTH so every index still points at the same offset in the
+ * original file and failure messages stay readable.
+ *
+ * This is load-bearing, not tidiness. `tools/join-apply.mjs` -- the tool a real arriving agent
+ * actually runs -- documents its own flow in a header comment (routes at lines 12-19) and mentions
+ * `verdict` there before it mentions `bind`. An index built from ANY mention therefore reports the
+ * real, correctly-ordered CLI as OUT OF ORDER. Only lines that execute count.
+ */
+function stripComments(src) {
+  const blank = (s) => s.replace(/[^\n]/g, ' ');
+  let out = src.replace(/\/\*[\s\S]*?\*\//g, blank);
+  out = out
+    .split('\n')
+    .map((line) => {
+      if (/^\s*\/\//.test(line)) return blank(line);
+      const at = line.search(/\s\/\/[^/]/);
+      return at < 0 ? line : line.slice(0, at + 1) + blank(line.slice(at + 1));
+    })
+    .join('\n');
+  return out;
+}
+
 function routeIndex(src, name) {
+  src = stripComments(src);
   const m = new RegExp(`/admission/${name}(?=['"\`?])`).exec(src);
   return m ? m.index : -1;
 }
@@ -46,6 +72,43 @@ function routeIndex(src, name) {
 function coveredRoutes(src) {
   return HARD_ORDER.map((name) => ({ name, at: routeIndex(src, name) }));
 }
+
+function inOrder(covered) {
+  return covered.every((r, i) => i === 0 || covered[i - 1].at < r.at);
+}
+
+test('the REAL on-ramp CLI walks the gate in the hard order', () => {
+  // join-apply.mjs is what a stranger finds in the docs and runs. If it loses the bind, a real
+  // arriving agent fails for OUR reason -- the same rot, on the path that matters most.
+  const src = readFileSync(ONRAMP, 'utf8');
+  const covered = coveredRoutes(src);
+  const missing = covered.filter((r) => r.at < 0).map((r) => r.name);
+  assert.deepEqual(missing, [], `join-apply.mjs must call every gate step; missing: ${missing.join(', ')}`);
+  assert.ok(inOrder(covered),
+    'the on-ramp must call the steps in the relay hard order: ' + covered.map((r) => `${r.name}@${r.at}`).join(' '));
+});
+
+test('RED ARM: a comment is not a call (the trap that made a mention-based index lie)', () => {
+  // Self-contained on purpose: asserting this against the real file would make the red arm depend on
+  // how someone formats a header comment, which is exactly the brittleness being guarded against.
+  // Faithful to the MEASURED trap in join-apply.mjs: the comment mentions the verdict route with a
+  // query string, and the trailing `?` is what satisfies the lookahead. A comment that merely says
+  // "verdict" followed by a space matches nothing and would not reproduce it.
+  const synthetic = [
+    "// flow: /admission/request, /admission/challenge, /admission/bind, /admission/answer, then /admission/verdict?requestId=... last",
+    "await call('/admission/request', { body });",
+    "await call('/admission/challenge', { body });",
+    "await call('/admission/bind', { body });",
+    "await call('/admission/answer', { body });",
+    "await call('/admission/verdict', { body });",
+  ].join('\n');
+  const crude = HARD_ORDER.map((name) => ({
+    name,
+    at: new RegExp(`/admission/${name}(?=['"\`?])`).exec(synthetic)?.index ?? -1,
+  }));
+  assert.equal(inOrder(crude), false, 'the crude mention-based index must be fooled by the comment');
+  assert.ok(inOrder(coveredRoutes(synthetic)), 'once comments are stripped, the real order is visible');
+});
 
 test('the relay really does document this order (so the guard is not inventing a rule)', () => {
   const relay = readFileSync(RELAY, 'utf8');
