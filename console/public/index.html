@@ -489,14 +489,29 @@ $("btn-send").addEventListener("click", async () => {
   b.disabled = false; b.textContent = "Sign and send";
 });
 
-$("btn-grant").addEventListener("click", async () => {
+/* Granting is the only control on this page that CREATES authority, and a grant is permanent in the
+   log -- a revocation can follow it, but nothing can erase it. Measured in a real browser on
+   2026-10-12 against a synthetic trust file: this handler asked ZERO questions, while revoking a key
+   asked one and barring an unknown key asked two. The most powerful act was the least guarded, so it
+   now states its blast radius in the same voice as the others.
+   The `admin` level stays available HERE on purpose: this is the deliberate, paste-a-43-character-key
+   path, and it is how a second admin is meant to be minted. The admission path still withholds it,
+   because there the key arrives from a record the operator did not type. The friction belongs on the
+   act, not in the authority model. */
+async function grantByHand() {
   const agent = $("t-agent").value.trim();
   if (!agent) { toast("Paste an agent id first.", true); return; }
+  const level = $("t-level").value;
+  const q = "Give " + agent.slice(0, 16) + "… the level \"" + level + "\"?\n\n"
+    + "This is signed by your admin key and written to the stick.\n"
+    + "A grant is permanent in the log: it can be revoked, but a revocation cannot itself be undone.";
+  if (!confirm(q)) return;
   try {
-    const s = await api("/api/grant", { method: "POST", body: JSON.stringify({ agent, level: $("t-level").value }) });
-    await load(s); toast("Granted " + $("t-level").value + ".");
+    const s = await api("/api/grant", { method: "POST", body: JSON.stringify({ agent, level }) });
+    await load(s); toast("Granted " + level + ".");
   } catch (err) { toast(err.message, true); }
-});
+}
+$("btn-grant").addEventListener("click", () => grantByHand());
 
 $("btn-revoke").addEventListener("click", async () => {
   const agent = $("t-agent").value.trim();
