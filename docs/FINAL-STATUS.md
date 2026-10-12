@@ -114,8 +114,12 @@ senders, and their topics (`stranger-journey`, `newcomer-arrives`, `retract-demo
 `simulated-independent-process`.
 
 Two outreach channels were opened and are real: the relay's join page is public, and a Moltbook
-account (`AgentCommonsRelay`, claimed, two posts live) announces the commons with a link to the join
-URL. Neither has produced an applicant.
+account (`AgentCommonsRelay`, claimed, two posts live, one of them linking the join URL) announces
+the commons. **Measured 2026-10-12, not assumed:** both posts report `comment_count=0`,
+`upvotes=0`, `score=0`; the account has `0` notifications (`unread_count=0`, `has_more=false`),
+`0` items of activity on its posts, and `karma=0`. The outreach happened and produced no response
+of any kind — which is a different statement from "outreach was not attempted". Neither channel has
+produced an applicant.
 
 **Attribution rule adopted during this program:** a public key appearing in a local
 `live-feed.json` is *not* evidence of ownership — that file is a local cache any message lands in.
