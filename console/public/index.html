@@ -243,7 +243,16 @@ async function api(path, opts) {
   let data = {};
   try { data = await res.json(); } catch (e) { /* locked pages may not be json */ }
   if (data.locked || res.status === 503) { lock(true); throw new Error(data.error || "USB stick removed"); }
-  if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+  if (!res.ok) {
+    // The server sends a machine-readable `code` beside its prose, and a caller that drops the code
+    // can only ever repeat the sentence -- it can never ANSWER it. One code has to survive:
+    // `target_holds_no_permit` means "I will do this, but only if you say you mean it", so a client
+    // without the code can print that question and then have no way to reply to it.
+    const err = new Error(data.error || ("HTTP " + res.status));
+    err.code = data.code;
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -492,10 +501,37 @@ $("btn-revoke").addEventListener("click", async () => {
   if (!agent) { toast("Paste an agent id first.", true); return; }
   if (!confirm("Revoke this key? This also revokes everyone it granted, and cannot be undone.")) return;
   try {
-    const s = await api("/api/revoke", { method: "POST", body: JSON.stringify({ agent }) });
+    const s = await revokeWithBar(agent);
     await load(s); toast("Revoked.");
   } catch (err) { toast(err.message, true); }
 });
+
+// Revoke `agent`, answering the one question the server is allowed to ask back.
+//
+// `POST /api/revoke` refuses a key that holds no permit here until the caller says
+// `acknowledgeUnknown: true`, because that same request is what a typo produces and the server
+// cannot tell the two apart. So the refusal is a QUESTION, not a failure -- and this console had no
+// way to answer it, which made "bar a key in advance" (a thing the server deliberately supports)
+// unreachable from the product while the server kept offering it.
+//
+// The second prompt is deliberately NOT the first one reworded. The first asks whether to remove a
+// key; this one says that nothing will be removed and that the key is being barred in advance -- so
+// nobody can get through it by clicking twice out of habit.
+async function revokeWithBar(agent) {
+  try {
+    return await api("/api/revoke", { method: "POST", body: JSON.stringify({ agent }) });
+  } catch (err) {
+    if (err.code !== "target_holds_no_permit") throw err;   // every other refusal is final
+    const ok = confirm(
+      "This key holds no permit here, so NOTHING will be removed.\n\n"
+      + "Confirming will permanently BAR " + agent.slice(0, 16) + "… : it can never be granted "
+      + "authority in this commons, even later and even by mistake. A revocation cannot be undone.\n\n"
+      + "Is barring it in advance what you mean?"
+    );
+    if (!ok) throw new Error("Nothing was revoked — that key holds no permit here.");
+    return await api("/api/revoke", { method: "POST", body: JSON.stringify({ agent, acknowledgeUnknown: true }) });
+  }
+}
 
 // Revoke the key on a row, so the admin never has to retype a 43-character id from memory. The
 // confirm states the blast radius, because "Revoked." alone cannot tell you whether you removed one
@@ -503,7 +539,7 @@ $("btn-revoke").addEventListener("click", async () => {
 async function revokeHolder(id) {
   if (!confirm("Revoke " + id.slice(0, 16) + "… ?\n\nThis also revokes every key it granted, and a revocation cannot be undone.")) return;
   try {
-    const s = await api("/api/revoke", { method: "POST", body: JSON.stringify({ agent: id }) });
+    const s = await revokeWithBar(id);
     await load(s);
     const n = Number(s.revokedCount) || 1;
     toast(n > 1 ? "Revoked, and " + (n - 1) + " key(s) it granted." : "Revoked.");
