@@ -130,6 +130,20 @@ check('JOINER fetches the challenge over the public relay', r.status === 200 && 
 check('the fetched challenge still carries no salt',
   !JSON.stringify(got).includes(salt));
 
+// ── 5b. JOINER BINDS ITS KEY  (the step this trial used to SKIP) ────────────
+// Skipping it made this trial STRUCTURALLY INCAPABLE OF PASSING, and nothing noticed because writing
+// trials are excluded from the npm test chain by design -- which is exactly the price of that
+// exclusion. The relay refuses to grant a request with no bound key (409 no_binding_yet), because a
+// grant issued before the bind would name nobody and strand the applicant, who can never bind again
+// once a verdict exists. THE ORDER IS A HARD ONE: request, challenge, BIND, answer, verdict.
+// The bind signs these exact bytes -- UTF-8, newline separated -- NOT canonical JSON.
+const bindClaim = ['agent-commons/relay-bind/v1', requestId, joiner.agentId].join('\n');
+const bindSig = b64u(crypto.sign(null, Buffer.from(bindClaim, 'utf8'), privKey(joiner.privateKey)));
+const bindBody = await stamp({ requestId, agentId: joiner.agentId, sig: bindSig });
+r = await call('/admission/bind', { method: 'POST', body: bindBody });
+check('JOINER binds its OWN key BEFORE any verdict exists', r.status === 201,
+  'got ' + r.status + ' ' + JSON.stringify(r.json));
+
 // ── 6. JOINER derives the answers from the published taxonomy ───────────────
 // The item format is an NLI pair: premise "{entity} is {parent}." and hypothesis
 // "{entity} is {category}.". src/agency.mjs scores it as `own.includes(category)`, where `own`

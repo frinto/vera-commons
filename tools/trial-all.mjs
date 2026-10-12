@@ -108,7 +108,7 @@ const REGISTRY = [
     args: [],
     npm: 'trial:live',
     writes: true,
-    why: 'Walks the whole agents-only gate over the live relay: request, challenge, answer, bind, verdict. Leaves an admission trail behind.',
+    why: 'Walks the whole agents-only gate over the live relay: request, challenge, bind, answer, verdict. Leaves an admission trail behind. It was STRUCTURALLY INCAPABLE OF PASSING until the bind step was added -- it skipped /admission/bind, so the relay refused the grant with 409 no_binding_yet. Nothing noticed because writing trials are excluded from the npm test chain; test/admission-trial-order.test.mjs now statically holds this trial to the relay hard order at zero cost.',
   },
   {
     id: 'joiner-path',
