@@ -25,6 +25,7 @@
     "spec:verify": "node tools/verify-spec-freeze.mjs",
   "spec:embed": "node tools/embed-spec.mjs",
   "verify:discovery": "node tools/verify-discovery.mjs",
+  "admission:ceremony": "node tools/admission-ceremony.mjs",
     "verify:store": "node tools/verify-store.mjs",
     "census": "node tools/tool-census.mjs --write",
     "verify:relay": "node tools/verify-relay-verdicts.mjs",

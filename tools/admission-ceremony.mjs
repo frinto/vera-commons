@@ -16,6 +16,17 @@
 //
 // --dry records the interview but never decides. That is the default for reading a statement in:
 // the transcript lands in the store and the human (or the lead) still has to say yes.
+//
+// VERIFIED AGAINST THE DEPLOYED CONSOLE (2026-10-12). The two refusal cases are the two ways a
+// decision must be turned away, and neither can be tested offline:
+//
+//   --id <expired> --skip-interview --decision refuse --expect-refused challenge_not_answered
+//   --id <decided> --skip-interview --decision refuse --expect-refused already_decided
+//
+// Both now report 10 checks and exit 0, and the admissions store's sha256 was unchanged after
+// both runs. Before the REFUSAL_FITS change below, both exited 1 — with failures describing the
+// situation under test rather than a defect, which is how a control becomes a red light nobody
+// can act on.
 import { readFileSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join, dirname, resolve } from 'node:path';
@@ -43,6 +54,19 @@ const EXPECT_REFUSED = arg('expect-refused', null);
 // decide-only run on a bound record must not try to submit one. (That refusal is the feature.)
 const SKIP_INTERVIEW = arg('skip-interview', false) === true;
 const PORT = Number(arg('port', 8799));
+
+// A REFUSAL TEST TARGETS A RECORD THAT IS DELIBERATELY NOT DECIDABLE, so this ceremony's own
+// preconditions do not describe it. They were asserted anyway, which meant the tool's
+// negative-control mode could never exit 0: it reported three failures describing the very
+// situation it existed to test (measured against the deployed console, 2026-10-12). A control
+// that cannot pass is not a control — it is a red light nobody can act on.
+//
+// Each expected refusal therefore states the state it makes sense in, and that is what gets
+// asserted instead. An unknown code is reported as an unasserted fact rather than guessed at.
+const REFUSAL_FITS = {
+  challenge_not_answered: (s) => s !== 'answered' && s !== 'decided',
+  already_decided: (s) => s === 'decided',
+};
 
 let failures = 0;
 function check(ok, label, detail = '') {
@@ -132,9 +156,18 @@ try {
     throw new Error('unknown admission in the deployed store');
   }
   check(true, 'the admission id is present in the deployed store');
-  check(rec.status === 'answered', 'the challenge was answered before any interview', `status=${rec.status}`);
-  check(rec.verdict && rec.verdict.ok === true, 'the challenge verdict passed', JSON.stringify(rec.verdict));
   console.log(`       interview field before: ${rec.interview ? 'present' : 'ABSENT'}`);
+  if (EXPECT_REFUSED) {
+    const fits = REFUSAL_FITS[EXPECT_REFUSED];
+    if (fits) {
+      check(fits(rec.status), `the record is in a state where "${EXPECT_REFUSED}" is the expected refusal`, `status=${rec.status}`);
+    } else {
+      console.log(`       (no precondition known for "${EXPECT_REFUSED}"; observed status=${rec.status} — reported, not asserted)`);
+    }
+  } else {
+    check(rec.status === 'answered', 'the challenge was answered before any interview', `status=${rec.status}`);
+    check(rec.verdict && rec.verdict.ok === true, 'the challenge verdict passed', JSON.stringify(rec.verdict));
+  }
 
   // --- 2. record the interview -----------------------------------------------
   if (!SKIP_INTERVIEW) {
@@ -155,7 +188,17 @@ try {
   } else {
     const pre = await call('/api/admissions');
     const recPre = (pre.body?.admissions ?? []).find((r) => r.id === ID);
-    check(!!recPre?.interview, 'an interview is already on the record (we are not submitting one)', recPre?.interview ? `${recPre.interview.statement.length} chars, signed=${recPre.interview.signed}` : 'ABSENT');
+    if (EXPECT_REFUSED) {
+      // Same reason as above: "an interview must already be on the record" is a precondition
+      // for DECIDING, and a refusal test never decides anything.
+      console.log(
+        `       interview on record: ${recPre?.interview
+          ? `${recPre.interview.statement.length} chars, signed=${recPre.interview.signed}`
+          : 'ABSENT (not required for a refusal test)'}`,
+      );
+    } else {
+      check(!!recPre?.interview, 'an interview is already on the record (we are not submitting one)', recPre?.interview ? `${recPre.interview.statement.length} chars, signed=${recPre.interview.signed}` : 'ABSENT');
+    }
   }
 
   if (DRY) {
@@ -172,8 +215,17 @@ try {
       check(dec.body?.code === EXPECT_REFUSED, `the refusal names the reason "${EXPECT_REFUSED}"`, `code=${dec.body?.code}`);
       const afterRefusal = await call('/api/admissions');
       const recR = (afterRefusal.body?.admissions ?? []).find((r) => r.id === ID);
-      check(recR?.status !== 'decided', 'the refused decision did NOT close the record', `status=${recR?.status}`);
-      check(recR?.grantee === null || recR?.grantee === undefined, 'no grantee was recorded', `grantee=${recR?.grantee}`);
+      // THE PROPERTY IS "NOTHING CHANGED", NOT "THE RECORD IS STILL OPEN". A refusal against an
+      // already-decided record legitimately leaves it decided, carrying the grantee and the
+      // timestamp it already had — so the old assertions ("status is not decided", "no grantee
+      // was recorded") failed for the one case where this control protects the most: a granted
+      // admission. Comparing against the snapshot taken before the attempt is both
+      // mode-independent and strictly stronger, since it also catches a refusal that quietly
+      // moved decidedAt.
+      check(recR?.status === rec.status, 'the refused decision did not change the status', `${rec.status} -> ${recR?.status}`);
+      check((recR?.decision ?? null) === (rec.decision ?? null), 'the refused decision did not change the decision', `${rec.decision} -> ${recR?.decision}`);
+      check((recR?.grantee ?? null) === (rec.grantee ?? null), 'the refused decision did not change the grantee', `${rec.grantee} -> ${recR?.grantee}`);
+      check((recR?.decidedAt ?? null) === (rec.decidedAt ?? null), 'the refused decision did not move decidedAt', `${rec.decidedAt} -> ${recR?.decidedAt}`);
     } else {
       check(dec.status === 200, `POST /api/admissions/decide recorded "${DECISION}"`, `HTTP ${dec.status} ${dec.status === 200 ? '' : JSON.stringify(dec.body)}`);
       console.log(`       decided by: ${dec.body?.by ?? '(none)'}  grantee: ${dec.body?.grantee ?? '(none)'}`);

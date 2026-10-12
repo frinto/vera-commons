@@ -19,10 +19,11 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (32) — something invokes it
+## Wired (33) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
+| `admission-ceremony.mjs` | yes | - | yes | 271 | Run the admission ceremony against the REAL deployed console. |
 | `admission-queue-review.mjs` | yes | - | yes | 97 | Review the relay's admission queue as the operator, and separate TRIAL DEBRIS from a REAL |
 | `build-standalone.mjs` | yes | YES | - | 296 | Build a SELF-CONTAINED single-file MCP server out of the layered sources. |
 | `challenge-issue.mjs` | yes | YES | - | 110 | Issue ONE admission challenge to a joining key, as a separate process, and write out the file |
@@ -56,11 +57,10 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `verify-store.mjs` | yes | - | - | 87 | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
-## Unwired (23) — nothing invokes it, so a human must know it exists
+## Unwired (22) — nothing invokes it, so a human must know it exists
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
-| `admission-ceremony.mjs` | yes | - | yes | 219 | Run the admission ceremony against the REAL deployed console. |
 | `binding-live-probe.mjs` | - | YES | yes | 123 | Live probe: can an agent actually bind itself to an admission on the DEPLOYED console? |
 | `bridge-trial.mjs` | - | YES | yes | 267 | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
 | `check-admin-levels.mjs` | - | - | - | 33 | Print the resolved permit level of every administrative key on the stick, and which of them may |
