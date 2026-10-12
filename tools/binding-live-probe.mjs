@@ -28,16 +28,15 @@ if (!existsSync(APP)) { console.error(`no deployed console at ${APP}`); process.
 const WORK = mkdtempSync(join(tmpdir(), 'ac-bind-'));
 const KEY_FILE = join(WORK, 'probe-agent.json');
 
-const child = spawn(process.execPath, [APP, '--port', String(PORT), '--no-browser'], {
-  cwd: dirname(APP), stdio: ['ignore', 'pipe', 'pipe'],
+// Through tools/console-runner.mjs: it refuses a port that is already served (naming the holder)
+// instead of letting this probe report a squatter's console as the deployment, and it can prove the
+// release afterwards. A bare spawn could do neither -- and on Windows two processes can hold one port.
+const { startConsole, stopAndVerify } = await import('./console-runner.mjs');
+const live = await startConsole({
+  app: APP, port: PORT, args: ['--no-browser'], cwd: dirname(APP), tool: 'binding-live-probe.mjs',
 });
-let out = '';
-const tokenReady = new Promise((res) => {
-  const onData = (c) => { out += String(c); const m = /\?t=([A-Za-z0-9_-]{10,})/.exec(out); if (m) res(m[1]); };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-  setTimeout(() => res(null), 20000);
-});
+const out = live.out;
+process.on('exit', () => { try { live.child.kill(); } catch { /* already gone */ } });
 
 function runJoinBind(extra = []) {
   return new Promise((res) => {
@@ -53,8 +52,7 @@ function runJoinBind(extra = []) {
 let ADMISSION_ID = null;
 let exitCode = 0;
 try {
-  const TOKEN = await tokenReady;
-  if (!TOKEN) throw new Error('the console never printed a token: ' + out.slice(-300));
+  const TOKEN = live.token;   // the runner returns a handle only once the console has printed it
   const BASE = `http://127.0.0.1:${PORT}`;
   const call = async (path, init) => {
     const sep = path.includes('?') ? '&' : '?';
@@ -108,7 +106,14 @@ try {
   failures++;
   console.log(`  FAIL ${err.message}`);
 } finally {
-  try { child.kill(); } catch { /* gone */ }
+  // Stop it and PROVE the port was released: "the process was killed" and "the socket was let go" are
+  // different claims, and the runner is what can tell them apart.
+  try {
+    await stopAndVerify(live);
+  } catch (e) {
+    failures++;
+    console.log(`  FAIL a console is STILL listening on port ${PORT} after this probe: ${String((e && e.message) || e)}`);
+  }
   try { rmSync(WORK, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 

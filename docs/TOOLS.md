@@ -65,7 +65,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
-| `binding-live-probe.mjs` | - | YES | yes | 123 | Live probe: can an agent actually bind itself to an admission on the DEPLOYED console? |
+| `binding-live-probe.mjs` | - | YES | yes | 128 | Live probe: can an agent actually bind itself to an admission on the DEPLOYED console? |
 | `bridge-trial.mjs` | - | YES | yes | 267 | End-to-end proof of the relay -> permit bridge, against a console the trial starts itself. |
 | `check-admin-levels.mjs` | - | - | - | 33 | Print the resolved permit level of every administrative key on the stick, and which of them may |
 | `console-attack.mjs` | yes | - | yes | 215 | RED TEAM the admin console over HTTP, as an attacker who has the URL and nothing else. |
@@ -80,7 +80,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `onramp-check.mjs` | yes | YES | yes | 152 | Does the on-ramp the docs promise actually work, right now, for a stranger? |
 | `operator-serve.mjs` | yes | - | yes | 240 | OPERATOR-SERVE — the OPERATOR's half of the Agent Commons admission gate, as a command. |
 | `probe-rejections.mjs` | yes | - | yes | 54 | Why did a joining agent's pull accept nothing? |
-| `relay-actions-live.mjs` | yes | - | yes | 242 | Live acceptance for the RELAY ACTIONS -- run against the DEPLOYED console and the REAL relay. |
+| `relay-actions-live.mjs` | yes | - | yes | 250 | Live acceptance for the RELAY ACTIONS -- run against the DEPLOYED console and the REAL relay. |
 | `relay-retract-probe.mjs` | - | YES | yes | 91 | LIVE, READ-ONLY probe: does a withdrawal made through the console actually hide the message |
 | `stick-preconditions.mjs` | - | - | - | 73 | WHAT KIND OF VOLUME IS THIS, AND WHAT DOES THAT LET US CLAIM? |
 | `trust-operator.mjs` | yes | YES | - | 133 | TRUST-OPERATOR — manage the relay-operator keys that a node will accept verdicts from. |

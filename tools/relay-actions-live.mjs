@@ -17,7 +17,6 @@
 // the alarming outcome here.
 //
 // usage: node tools/relay-actions-live.mjs [--stick E:\] [--port 7813] [--relay <url>]
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -45,36 +44,36 @@ if (!existsSync(APP)) {
 
 console.log(`\n--- live relay actions, as the STICK serves them (${RELAY}) ---`);
 
-const child = spawn(process.execPath, [APP, '--port', String(PORT), '--no-browser', '--relay', RELAY], {
-  cwd: join(STICK, 'console'), stdio: ['ignore', 'pipe', 'pipe'],
-});
-let out = '', err = '', exited = null;
-child.stdout.on('data', (c) => { out += String(c); });
-child.stderr.on('data', (c) => { err += String(c); });
-child.on('exit', (code) => { exited = code; });
+// Through tools/console-runner.mjs, not a bare spawn: the runner REFUSES a port that is already
+// served -- naming the holder -- takes an attributed lock, and can prove the release. Without the
+// pre-flight this file would talk to whatever else held the port and report it as the deployed
+// console, and on Windows two processes can hold one port.
+const { startConsole, stopAndVerify } = await import('./console-runner.mjs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const cleanup = () => { try { child.kill(); } catch { /* already gone */ } };
-process.on('exit', cleanup);
-
-await sleep(4500);
-
-if (exited !== null) {
-  bad(`the deployed console EXITED immediately (code ${exited})`);
-  for (const l of (err || out).split('\n').filter(Boolean).slice(0, 8)) info('| ' + l);
+let live = null;
+try {
+  live = await startConsole({
+    app: APP, port: PORT, args: ['--no-browser', '--relay', RELAY],
+    cwd: join(STICK, 'console'), tool: 'relay-actions-live.mjs',
+  });
+} catch (e) {
+  bad(`the deployed console did not come up: ${String((e && e.message) || e).split('\n')[0]}`);
   console.log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(1);
 }
 ok('the deployed console is running');
-
-const tm = /\?t=([A-Za-z0-9_-]{10,})/.exec(out);
-const TOKEN = tm ? tm[1] : null;
-if (!TOKEN) {
-  bad('no per-run token was printed; every route would answer 401');
-  for (const l of (out || err).split('\n').filter(Boolean).slice(0, 6)) info('| ' + l);
-  console.log(`\n${pass} passed, ${fail} failed\n`);
-  process.exit(1);
-}
 ok('the console issued a per-run token');
+const TOKEN = live.token;
+
+// Diagnostics must keep working: the runner already consumed the startup output, so seed from its
+// buffer and keep appending. `exited` is what lets send() tell "the server died" from a flaky socket.
+let out = live.out, err = '', exited = null;
+live.child.stdout.on('data', (c) => { out += String(c); });
+live.child.stderr.on('data', (c) => { err += String(c); });
+live.child.on('exit', (code) => { exited = code; });
+// Belt and braces for an unexpected throw: the PROOF path is the awaited stop at the end, but a crash
+// must not leave an orphaned console holding the port.
+process.on('exit', () => { try { live?.child?.kill(); } catch { /* already gone */ } });
 
 // One retry on a network error, and -- this is the part that matters -- when the retry also fails,
 // say what the CONSOLE said. A bare ECONNRESET cannot be told apart from "the server died", and the
@@ -237,5 +236,13 @@ if (before.status !== 200 || after.status !== 200) {
   }
 }
 
+// Stop it -- and PROVE the port was released. "It was killed" and "it let go of the socket" are
+// different claims, and only the second keeps the next run honest.
+try {
+  await stopAndVerify(live);
+  ok('the console was stopped and port ' + PORT + ' is free again');
+} catch (e) {
+  bad('a console is STILL listening on port ' + PORT + ' after this run: ' + String((e && e.message) || e));
+}
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
