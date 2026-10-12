@@ -142,6 +142,24 @@ const REGISTRY = [
     writes: true,
     why: 'The console driving the relay end to end. The heaviest writer here, and until now it had no npm script either, so nothing ran it by default.',
   },
+  {
+    id: 'ceremony-live',
+    file: 'tools/ceremony-live-trial.mjs',
+    args: ['--decision', 'grant'],
+    npm: 'ceremony:live',
+    writes: true,
+    // Declared, not hidden. This trial writes a REAL record into the store on the stick -- not to the
+    // relay. Its own POSTs go to a local console (127.0.0.1) through a helper whose URL is assembled
+    // at runtime, and the two state-changing writes that matter (interview, decide) are made by the
+    // admission-ceremony CHILD PROCESS it spawns. The static detector recognises only POSTs to the
+    // live relay host, so it can see neither. Naming that here keeps the exception visible instead of
+    // loosening the guard until it stops complaining.
+    writeVia: 'local-console',
+    // Needs the provisioned stick: the deployed console at E:\console, the admin key it reads to
+    // authorise a decision, the verifier salt it scores with, and the real store it writes.
+    needsStick: true,
+    why: 'The admin ceremony tool\'s HAPPY mode against the REAL store, which nothing had ever run: the refusal modes were verified, the happy mode needed a record in state `answered` and no such record existed. It mints one through the console\'s own agent-facing routes (start -> solve -> answer), then hands it to tools/admission-ceremony.mjs for interview + decide. TWO DEFECTS ON ITS FIRST LIVE RUNS: (1) the deployed stick\'s src/admission.mjs predated spec v0.5 3g.2, so the local challenge carried items and no taxonomy and the local door was a WALL -- deploy-stick --check reported 30 drifted files, and the seam probe could not see it because it runs against a COPY; (2) the console refuses a statement that is not signed by the applicant (409 interview_not_signed), so the ceremony tool\'s interview step had never worked -- it now signs with --key or refuses to post. Also asserts the property that a decision is NOT a permit: the permit ledger must be unchanged across a granted ceremony.',
+  },
 ];
 
 const argv = process.argv.slice(2);

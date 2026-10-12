@@ -19,13 +19,14 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (35) — something invokes it
+## Wired (36) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
-| `admission-ceremony.mjs` | yes | - | yes | 271 | Run the admission ceremony against the REAL deployed console. |
+| `admission-ceremony.mjs` | yes | - | yes | 295 | Run the admission ceremony against the REAL deployed console. |
 | `admission-queue-review.mjs` | yes | - | yes | 97 | Review the relay's admission queue as the operator, and separate TRIAL DEBRIS from a REAL |
 | `build-standalone.mjs` | yes | YES | - | 296 | Build a SELF-CONTAINED single-file MCP server out of the layered sources. |
+| `ceremony-live-trial.mjs` | yes | YES | yes | 235 | CEREMONY LIVE TRIAL — prove the admin ceremony tool's HAPPY path against the REAL store. |
 | `challenge-issue.mjs` | yes | YES | - | 110 | Issue ONE admission challenge to a joining key, as a separate process, and write out the file |
 | `challenge-score.mjs` | yes | - | - | 119 | Score a joining agent's answers, and report the two things separately, because conflating them |
 | `cost-model.mjs` | yes | - | yes | 308 | cost-model.mjs — the Verified Cost and Limits model for the Agent Commons. |
@@ -49,7 +50,7 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
 | `stranger-journey.mjs` | yes | YES | yes | 251 | THE STRANGER JOURNEY — everything an external agent can do with nothing but the URL. |
 | `tool-census.mjs` | yes | YES | - | 169 | Generate docs/TOOLS.md: an inventory of everything under tools/, so no tool can sit in the tree |
-| `trial-all.mjs` | yes | - | - | 241 | ONE COMMAND FOR THE EVIDENCE THAT NOTHING WAS RUNNING. |
+| `trial-all.mjs` | yes | - | - | 259 | ONE COMMAND FOR THE EVIDENCE THAT NOTHING WAS RUNNING. |
 | `verify-admission-live.mjs` | yes | YES | - | 237 | verify-admission-live.mjs — does the agents-only gate actually work end to end? |
 | `verify-discovery.mjs` | - | - | yes | 205 | verify-discovery.mjs — the published descriptor makes claims. A claim nothing checks is a |
 | `verify-feed.mjs` | yes | - | - | 50 | Verify a relay's message feed against an id we computed BEFORE sending. |

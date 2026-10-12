@@ -11,11 +11,20 @@
 //
 // It PUBLISHES NOTHING to the relay. `decide()` is an admin record; it issues no message.
 //
-//   node tools/admission-ceremony.mjs --id <admissionId> --statement <file> [--decision grant|refuse]
-//                                     [--dry] [--port N]
+//   node tools/admission-ceremony.mjs --id <admissionId> --statement <file> [--key <identity.json>]
+//                                     [--decision grant|refuse] [--dry] [--port N]
 //
 // --dry records the interview but never decides. That is the default for reading a statement in:
 // the transcript lands in the store and the human (or the lead) still has to say yes.
+//
+// THE STATEMENT MUST BE THE APPLICANT'S SIGNED ACT (measured 2026-10-12, and it is why this tool's
+// happy mode had never passed). Posting an unsigned statement returns HTTP 409
+// `interview_not_signed` from the deployed console: the library verifies the text against
+// interviewBytes({id, agentId, statement}) under the key the record is bound to, so an admin cannot
+// author an applicant's words -- and must not be able to. Pass --key <identity.json> to sign as the
+// applicant (trial or assisted flow, and the signature is still the applicant's key), or let the
+// applicant submit its own interview and run with --skip-interview. Without a key this tool now
+// REFUSES to post, instead of collecting a 409 and reporting it as four unrelated failures.
 //
 // VERIFIED AGAINST THE DEPLOYED CONSOLE (2026-10-12). The two refusal cases are the two ways a
 // decision must be turned away, and neither can be tested offline:
@@ -31,6 +40,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadIdentity, sign } from '../src/identity.mjs';
+import { interviewBytes } from '../src/admission.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STICK = process.env.AC_STICK || 'E:\\';
@@ -44,6 +55,7 @@ function arg(name, fallback = undefined) {
 
 const ID = arg('id');
 const STATEMENT_FILE = arg('statement');
+const KEY_FILE = arg('key');
 const DECISION = arg('decision');
 const DRY = arg('dry', false) === true;
 // Assert the console REFUSES the decision with this exact code, instead of expecting it to work.
@@ -80,6 +92,13 @@ if (!SKIP_INTERVIEW) {
   if (!existsSync(STATEMENT_FILE)) { console.error(`no statement file at ${STATEMENT_FILE}`); process.exit(2); }
 }
 if (!DRY && !['grant', 'refuse'].includes(DECISION)) { console.error('--decision grant|refuse is required unless --dry'); process.exit(2); }
+// Refuse BEFORE spawning the console: an unsigned statement is refused by the console (409
+// interview_not_signed), and reporting that as four failed checks hides the one fact that matters.
+if (!SKIP_INTERVIEW && !KEY_FILE) {
+  console.error('the statement must be signed by the applicant: pass --key <identity.json>, or let the applicant submit its own interview and pass --skip-interview');
+  process.exit(2);
+}
+if (KEY_FILE && !existsSync(String(KEY_FILE))) { console.error(`no identity file at ${KEY_FILE}`); process.exit(2); }
 
 const APP = join(STICK, 'console', 'app.mjs');
 if (!existsSync(APP)) { console.error(`no deployed console at ${APP} — deploy the stick first`); process.exit(2); }
@@ -171,9 +190,14 @@ try {
 
   // --- 2. record the interview -----------------------------------------------
   if (!SKIP_INTERVIEW) {
+    // Signed with the applicant's own key: the console verifies the text against
+    // interviewBytes({id, agentId, statement}) under the key this record is bound to.
+    const applicant = loadIdentity(String(KEY_FILE));
+    const sig = sign(applicant, interviewBytes({ id: ID, agentId: applicant.agentId, statement: STATEMENT }));
+    console.log(`       signing as: ${applicant.agentId}`);
     const iv = await call('/api/admissions/interview', {
       method: 'POST',
-      body: JSON.stringify({ id: ID, statement: STATEMENT, answers: ANSWERS }),
+      body: JSON.stringify({ id: ID, statement: STATEMENT, answers: ANSWERS, agentId: applicant.agentId, sig }),
     });
     check(iv.status === 200, 'POST /api/admissions/interview accepted the statement', `HTTP ${iv.status} ${iv.status === 200 ? '' : JSON.stringify(iv.body)}`);
 

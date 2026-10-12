@@ -591,5 +591,82 @@ own, no MCP surface. The npm name collision means the obvious `npx` on-ramp is e
 hazardous. This round removed the reason an agent that *arrives* would fail. It did nothing to
 make one arrive.
 
+## 12. Round 40: the local door was a wall on the stick, and the ceremony had never actually run
+
+Both findings came from running `tools/ceremony-live-trial.mjs` (new, wired as `npm run
+ceremony:live`) — not from reading code. Its job is to execute the admin ceremony tool's **happy**
+mode against the real store, which nothing had ever done.
+
+### 12a. The deployed stick had drifted, so the local joiner path admitted nobody
+
+The first live run failed at the very first real step. The challenge the deployed console handed
+out carried `items` and **no `kb`** — items whose expected answers come from a taxonomy that never
+travelled with them. An agent cannot answer a question about a category the question never
+mentions, so the local door was a WALL rather than a gate: it rejected every honest agent.
+
+The cause was deployment drift, not a code defect:
+
+- `E:\src\admission.mjs` was 30,376 B, sha `71745130DBA9E2BC…`; the repository's is 31,105 B, sha
+  `896061353B3BCAA6…`. The stick's copy predated the v0.5 §3g.2 change that publishes `kb` with the
+  challenge; the repo's carries it (as shorthand `kb,`, with the 85/150 = 56.7% measurement in the
+  comment above it). `console/app.mjs` and `src/agency.mjs` were byte-identical, so this was one
+  file left behind, not a stale tree.
+- `node tools/deploy-stick.mjs --check` reported **30 drifted files** and wrote nothing.
+- **The seam probe could not have caught this**: `tools/permit-seam-probe.mjs` copies the console and
+  `src/` into a temp directory and runs there, so it exercises the repository's code, never the
+  stick's. A probe against a copy cannot see drift on the original. That is the transferable lesson.
+
+Repair and evidence: `node tools/deploy-stick.mjs` (exit 0) copied the trees with `copyFileSync`
+(byte-preserving; no encoding round-trip) and never touches the six secret files on the stick —
+`trust.json`, `user-admin.json`, `verifier.json`, `vera-admin.json`, `commons-root.json` and
+`relay-operator-secret.txt` do not exist in the repository at all, so the manifest cannot clobber
+them; all six were backed up and hash-verified first. The tool's own post-deploy battery then booted the DEPLOYED console and
+passed (`401` without a token, `200` with it, withdrawal UI present, revoke-by-click present, root
+not revocable, live state exposes `withdrawn`, operator identity read as `8pK5H_bq…`). A following
+`--check` reported **exit 0 — "the stick matches the repo"**, and the trial's phase A then passed
+with the taxonomy published.
+
+### 12b. The console refuses an unsigned statement, so the ceremony's interview step never worked
+
+With the wall down, the tool reached its next step and got `HTTP 409 interview_not_signed`. This is
+the console working as designed: `src/admission.mjs` verifies the text against
+`interviewBytes({ id, agentId, statement })` under the key the record is bound to (line 317), so a
+statement is attributable to the applicant who wrote it. The admin tool posted it **unsigned**, so
+its interview branch could never succeed — and its four downstream failures ("the interview is now
+IN the store", "stored VERBATIM", "the mapped answers are stored" and the exit status) described the
+situation under test rather than a defect in the console.
+
+Fixed in the tool: `--key <identity.json>` signs as the applicant (the signature is still the
+applicant's key — the tool merely holds it for a trial or assisted run), and **without a key the
+tool now refuses to post at all** (exit 2, with the reason) instead of collecting a 409 and
+reporting four unrelated failures. The alternative path is unchanged and preferred for real
+applicants: the applicant submits its own interview, and the admin runs `--skip-interview`.
+
+### 12c. A decision is not a permit, and that is now asserted
+
+`decide grant` records the grantee and mints **no** permit — `src/admission.mjs:3`: *"Authority
+requires a separate explicit permit operation."* The trial therefore asserts the permit ledger is
+**unchanged** (3 → 3) across a granted ceremony, so the admin's interview-and-decide step can never
+become a silent grant of speaking rights. A first version of the trial asserted a permit *appeared*;
+that expectation was wrong, and the corrected assertion is the stronger one.
+
+### 12d. Live state after this round
+
+- `E:\data\admissions\admissions.json`: 5 records — 2 `expired`, 1 decided/grant (150/150, earlier),
+  1 decided/grant from this trial (signed interview, 816 chars, 3 mapped answers, grantee
+  `IbTgT6yk…`), and 1 in `answered` awaiting a decision. The last one is what a waiting applicant
+  looks like and is left that way deliberately.
+- `E:\trust.json` unchanged at `351143743D8A…` (1 operator, 3 permits, 1 root) — see 12c.
+- Trial identities are persisted under `.tmp/ceremony-live/`, so a granted permit is never an
+  orphaned key nobody can audit.
+- `npm run ceremony:live` exit 0, 19 checks passing; census 57 tools / 36 wired / 21 unwired.
+
+### 12e. What this does NOT prove
+
+No external agent arrived: deliverable (5) remains **zero**. This trial plays both roles and holds
+the applicant key itself, which is exactly why the admin tool must not be able to author a
+statement. The relay shuttle was not exercised here (that is `tools/joiner-path-trial.mjs`, live),
+and this says nothing about whether a stranger can find the door at all — see 11f.
+
 
 

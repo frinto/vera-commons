@@ -26,6 +26,7 @@
   "spec:embed": "node tools/embed-spec.mjs",
   "verify:discovery": "node tools/verify-discovery.mjs",
   "admission:ceremony": "node tools/admission-ceremony.mjs",
+  "ceremony:live": "node tools/ceremony-live-trial.mjs",
   "permit:probe": "node tools/permit-seam-probe.mjs",
   "feed:verify": "node tools/verify-feed.mjs",
   "feed:provenance": "node tools/feed-provenance.mjs",
