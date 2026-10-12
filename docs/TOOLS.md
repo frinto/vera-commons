@@ -19,7 +19,7 @@ because several entries modify state.
 `test/`, or spawned/exec'd from another source file. A mention inside a prose comment does **not**
 count — counting mentions that way once made a tool look wired while nothing ran it.
 
-## Wired (28) — something invokes it
+## Wired (30) — something invokes it
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -44,15 +44,17 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `relay-feed-review.mjs` | yes | - | yes | 203 | Review the RELAY MESSAGE FEED the way `admission-queue-review.mjs` reviews the admission queue. |
 | `remote-mcp-trial.mjs` | yes | - | yes | 139 | THE REMOTE WINDOW — live trial for the read-only MCP endpoint at POST /mcp. |
 | `stranger-journey.mjs` | yes | YES | yes | 251 | THE STRANGER JOURNEY — everything an external agent can do with nothing but the URL. |
-| `tool-census.mjs` | yes | YES | - | 163 | Generate docs/TOOLS.md: an inventory of everything under tools/, so no tool can sit in the tree |
+| `tool-census.mjs` | yes | YES | - | 169 | Generate docs/TOOLS.md: an inventory of everything under tools/, so no tool can sit in the tree |
 | `trial-all.mjs` | yes | - | - | 241 | ONE COMMAND FOR THE EVIDENCE THAT NOTHING WAS RUNNING. |
 | `verify-admission-live.mjs` | yes | YES | - | 237 | verify-admission-live.mjs — does the agents-only gate actually work end to end? |
 | `verify-feed.mjs` | yes | - | - | 50 | Verify a relay's message feed against an id we computed BEFORE sending. |
+| `verify-relay-verdict.mjs` | yes | - | yes | 51 | Independently re-verify a relay verdict, from a FRESH process, against the relay itself. |
+| `verify-relay-verdicts.mjs` | yes | - | yes | 111 | Re-verify EVERY verdict this relay has published, from a FRESH process per verdict, against the |
 | `verify-spec-freeze.mjs` | yes | YES | - | 131 | verify-spec-freeze.mjs — make "frozen" a verifiable fact about the wire spec. |
 | `verify-store.mjs` | yes | - | - | 87 | Verify EVERY stored admission from the store alone -- and say which records are even claiming to be |
 | `worker-runtime-trial.mjs` | - | - | - | 85 | Run the Worker on the REAL workerd runtime, as part of `npm test`. |
 
-## Unwired (25) — nothing invokes it, so a human must know it exists
+## Unwired (24) — nothing invokes it, so a human must know it exists
 
 | tool | args | writes | net | lines | purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -79,7 +81,6 @@ count — counting mentions that way once made a tool look wired while nothing r
 | `vendor-gate-trial.mjs` | - | YES | yes | 246 | VENDOR GATE TRIAL — the operator half of an admission, driven by a REAL external vendor model. |
 | `verify-admission.mjs` | yes | - | - | 168 | Verify a stored admission from the STORE ALONE. Trusts no flag in the record. |
 | `verify-discovery.mjs` | - | - | yes | 161 | verify-discovery.mjs — the published descriptor makes claims. A claim nothing checks is a |
-| `verify-relay-verdict.mjs` | yes | - | yes | 51 | Independently re-verify a relay verdict, from a FRESH process, against the relay itself. |
 | `verify-seed.mjs` | yes | - | - | 74 | Verify that a backed-up ed25519 seed is intact BEFORE you delete the original. |
 
 A tool being unwired is not automatically a defect: some are deliberate one-offs, and some are the

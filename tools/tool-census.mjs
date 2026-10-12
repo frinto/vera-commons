@@ -80,7 +80,13 @@ export function buildCensus() {
         // an interpreter. The second is how every shell caller works -- a PowerShell line reading
         // `node tools/verify-feed.mjs ...` contains no spawn() at all, so a rule that only looked for
         // spawn() reported tools invoked from verify-worker-local.ps1 as never invoked.
-        const programmatic = /(spawn|execFile|execSync|exec)\s*\(/.test(line);
+        // `(spawn|exec)\w*\(` and not a list of exact names. The list version spelled out spawn,
+        // execFile, execSync and exec -- and `execFileSync` matches NONE of them: `execFile` is
+        // followed by `Sync`, and `exec` is followed by `File`. So a tool invoked with the most common
+        // call in this repository was reported as invoked by nothing. Found by checking the census
+        // against a case whose answer was already known: tools/verify-relay-verdict.mjs, invoked by
+        // tools/verify-relay-verdicts.mjs two lines above.
+        const programmatic = /(spawn|exec)\w*\s*\(/.test(line);
         const interpreted = /\b(node|npx|powershell|pwsh|bash|sh|cmd)\b[^\n]*tools[\\/]/i.test(line)
           && !/^\s*(\/\/|#|\*)/.test(line);          // a commented-out line is not an invocation
         if (programmatic || interpreted) { via = via ?? 'invoked'; }

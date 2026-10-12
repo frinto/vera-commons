@@ -100,6 +100,17 @@ test('a shebang does not hide a header comment', () => {
     'verify-store.mjs has a header comment on line 2; reporting none means the extractor stopped at the shebang');
 });
 
+test('invocation detection sees execFileSync, the call this repository actually uses', () => {
+  // Regression pin. The detector spelled out spawn|execFile|execSync|exec, and `execFileSync` matches
+  // none of them -- `execFile` is followed by `Sync`, `exec` by `File`. tools/verify-relay-verdict.mjs
+  // is spawned by tools/verify-relay-verdicts.mjs with execFileSync and was reported as invoked by
+  // nothing. The answer here was known before the census ran, which is the only reason it was caught.
+  const byName = Object.fromEntries(buildCensus().map(r => [r.name, r]));
+  assert.equal(byName['verify-relay-verdict.mjs']?.wired, true,
+    'verify-relay-verdict.mjs is spawned by verify-relay-verdicts.mjs; reporting it unwired means '
+    + 'execFileSync is not being recognised as an invocation');
+});
+
 test('the census itself is wired, so the document cannot be orphaned by its own author', () => {
   const self = buildCensus().find(r => r.name === 'tool-census.mjs');
   assert.ok(self, 'tool-census.mjs is missing from its own census');
