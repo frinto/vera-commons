@@ -888,12 +888,34 @@ export default {
         if (!isOperator) return json(401, { ok: false, reason: 'operator_only' });
         const listed = await kv.list({ prefix: 'a:req:', limit: 200 });
         const requests = [];
+        // An entry whose value cannot be read is REPORTED, never dropped. The message route above
+        // already answers this honestly (`truncated: listed.list_complete === false`); the queue is
+        // the one listing where a silent omission costs an admission instead of a message. Dropping
+        // an unreadable entry made it indistinguishable from an absent one, and the operator would
+        // read "no real applicants waiting" over a joiner who is in fact waiting.
+        const unreadable = [];
         for (const k of listed.keys) {
-          const v = await kv.get(k.name, 'json');
+          const id = k.name.startsWith('a:req:') ? k.name.slice('a:req:'.length) : k.name;
+          let v = null;
+          // A value that will not parse makes the binding THROW, not return null, so a bare await here
+          // would turn one corrupt entry into a 500 for the whole queue -- the operator would lose
+          // every readable request because of one bad one. Either way the entry is unreadable, and
+          // unreadable entries are counted below rather than dropped.
+          try { v = await kv.get(k.name, 'json'); } catch { v = null; }
           if (v) requests.push(v);
+          else unreadable.push(id);
         }
         requests.sort((a, b) => a.at - b.at);
-        return json(200, { ok: true, requests });
+        // `truncated` is the KV binding's own signal, never a guess from the limit: when it is set,
+        // this page is not the whole queue and the operator must know that BEFORE concluding that
+        // nobody is waiting. `total` says how much this page actually covered.
+        return json(200, {
+          ok: true,
+          requests,
+          total: listed.keys.length,
+          unreadable,
+          truncated: listed.list_complete === false,
+        });
       }
 
       // --- operator: publish the challenge ----------------------------------

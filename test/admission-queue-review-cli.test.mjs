@@ -130,5 +130,38 @@ for (const [label, body] of notAQueue) {
     `status=${r.status} stdout=${JSON.stringify(r.out.slice(0, 160))}`);
 }
 
+// --- 4. a PARTIAL read must not be presented as the whole queue --------------------------------
+//
+// The worker now reports two things a review cannot answer by assumption: `truncated` (the listing
+// was cut short) and `unreadable` (entries that exist and could not be read). Both mean the human
+// has NOT seen everyone waiting, so the tool must say so rather than print "(no real applicants
+// waiting)" over an entrant it never saw -- the same wrong answer as case 3, arriving by a different
+// road. A relay that reports NEITHER is an older deployment: that is a stated limit, so it is noted
+// in the output and does not fail a review that did read everything it was given.
+{
+  const r = await runCli({ body: { ...FIXTURE, truncated: true, unreadable: ['req-corrupt'] }, args: [] });
+  check('a truncated listing FAILS rather than reading as a complete queue', r.status === 2,
+    `status=${r.status} out=${JSON.stringify(r.out.slice(0, 160))}`);
+  check('...and names the entries it could not read', r.err.includes('req-corrupt'), r.err.slice(0, 220));
+
+  const unreadableOnly = await runCli({ body: { ...FIXTURE, truncated: false, unreadable: ['req-corrupt'] }, args: [] });
+  check('an unreadable entry ALONE fails, without any truncation flag', unreadableOnly.status === 2,
+    `status=${unreadableOnly.status} err=${JSON.stringify(unreadableOnly.err.slice(0, 160))}`);
+
+  const complete = await runCli({ body: { ...FIXTURE, truncated: false, unreadable: [] }, args: [] });
+  check('a relay reporting a complete page still passes', complete.status === 0,
+    `status=${complete.status} err=${JSON.stringify(complete.err.slice(0, 160))}`);
+  check('...and says so in the output a human reads', /page complete/.test(complete.out), complete.out.slice(0, 240));
+
+  const older = await runCli({ body: FIXTURE, args: [] });
+  check('a relay that reports nothing about completeness is a STATED limit, not a failure',
+    older.status === 0 && /NOT REPORTED/.test(older.out),
+    `status=${older.status} out=${JSON.stringify(older.out.slice(0, 240))}`);
+
+  const olderJson = await runCli({ body: FIXTURE });
+  check('the JSON path carries the same completeness statement',
+    /NOT REPORTED/.test(olderJson.out), olderJson.out.slice(0, 240));
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

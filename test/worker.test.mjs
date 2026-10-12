@@ -178,4 +178,50 @@ console.log(`NOTE: runtime Ed25519 in WebCrypto = ${ed25519}`);
   pass('GET /messages?since= resumes after the given message');
 }
 
+// --- the operator queue must not hide what it could not read ------------------
+//
+// Measured defect: this route built its list with `if (v) requests.push(v)`, so an entry whose value
+// could not be read vanished from the operator's view while the route still answered ok:true. The
+// operator would read "nothing waiting" over a joiner who IS waiting, which is the one failure the
+// whole gate exists to prevent. The message route already reported its own truncation
+// (`truncated: listed.list_complete === false`); the queue did not, and for the queue the cost of a
+// silent omission is an admission rather than a message.
+{
+  const SECRET = 'operator-secret-for-test';
+  const kv = makeKV();
+  await kv.put('a:req:req-good', JSON.stringify({ requestId: 'req-good', joinKey: 'k'.repeat(44), note: null, at: 1 }));
+  // Exists, but will not parse: to `get(key, 'json')` that is a THROW, not a null, which is exactly
+  // the shape a corrupted or half-written value has. It must not take the readable entry down with it.
+  await kv.put('a:req:req-corrupt', '{not json');
+  const envOp = (k, listComplete) => ({
+    COMMONS: {
+      ...k,
+      async list(opts) { const r = await k.list(opts); return { ...r, list_complete: listComplete }; },
+    },
+    ADMISSION_OPERATOR_SECRET: SECRET,
+  });
+  const call = (k, listComplete = true) => worker.fetch(
+    new Request('https://relay.test/admission/requests', { headers: { authorization: `Bearer ${SECRET}` } }),
+    envOp(k, listComplete),
+  );
+
+  assert.equal((await worker.fetch(new Request('https://relay.test/admission/requests'), { COMMONS: kv })).status, 401,
+    'the queue stays operator-only');
+  pass('an unauthenticated read of the queue is refused');
+
+  const queueRes = await call(kv);
+  assert.equal(queueRes.status, 200, 'one corrupt entry must not 500 the whole queue');
+  const body = await queueRes.json();
+  assert.equal(body.requests.length, 1, `the readable request still comes back (got ${body.requests.length})`);
+  assert.deepEqual(body.unreadable, ['req-corrupt'],
+    `an entry that could not be read must be REPORTED, not dropped (got ${JSON.stringify(body.unreadable)})`);
+  assert.equal(body.truncated, false, 'a complete page must not claim truncation');
+  pass('an unreadable queue entry is reported instead of silently dropped');
+
+  const cut = await (await call(kv, false)).json();
+  assert.equal(cut.truncated, true, 'list_complete=false must surface as truncated');
+  assert.equal(cut.requests.length, 1, 'truncation must not change what was readable');
+  pass('a cut-short listing is reported as truncated');
+}
+
 console.log(`\n${n} assertions passed.`);

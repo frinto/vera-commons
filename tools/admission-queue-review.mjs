@@ -21,6 +21,13 @@
  * list is fixed and documented, the strings are meaningless outside this repository, and the
  * alternative (guessing) is worse.
  *
+ * COMPLETENESS IS NOT ASSUMED, it is read. The relay reports whether the page it sent was the whole
+ * queue (`truncated`, from the KV binding's own list_complete) and which entries existed but could
+ * not be read (`unreadable`). Either one means the human has NOT seen everyone who is waiting, so
+ * this tool exits 2 instead of printing "no real applicants waiting" over an entrant it never saw.
+ * A relay that reports neither is an older deployment: that is printed as a stated limit and does
+ * not fail a review that did read everything it was given.
+ *
  * Usage:
  *   node tools/admission-queue-review.mjs                 # human-readable
  *   node tools/admission-queue-review.mjs --json
@@ -72,28 +79,55 @@ function main() {
         throw new Error(`operator route returned a body that is not a queue: ${what}`);
       }
       const { rows, trials, real } = triage(body.requests);
+      // COMPLETENESS is a separate question from what the queue contains, and this tool must not
+      // answer it by assumption. A relay that reports it can say the page was cut short, or that an
+      // entry exists and could not be read; either way the human has NOT seen the whole queue, and
+      // saying "no real applicants waiting" over that would be the one wrong answer again.
+      // A relay that reports neither is an older deployment: that is a STATED LIMIT, not a finding,
+      // so it is printed and does not fail a review that did read everything it was given.
+      const truncated = body.truncated === true;
+      const unreadable = Array.isArray(body.unreadable) ? body.unreadable : null;
+      const reported = body.truncated !== undefined || unreadable !== null;
+      const partial = truncated || (unreadable !== null && unreadable.length > 0);
+      const completeness = reported
+        ? `${rows.length} read; ${truncated ? 'MORE WAITING, the page was cut short' : 'page complete'}; ${unreadable === null ? 'unreadable count not reported' : `${unreadable.length} unreadable`}`
+        : 'NOT REPORTED by this relay, so completeness cannot be confirmed from here';
       if (asJson) {
-        console.log(JSON.stringify({ relay: RELAY, total: rows.length, trials: trials.length, real: real.length, rows }, null, 2));
-        return;
-      }
-      console.log(`admission queue at ${RELAY}`);
-      console.log(`  waiting: ${rows.length}   trial debris: ${trials.length}   REAL APPLICANTS: ${real.length}`);
-      if (real.length) {
-        console.log('');
-        console.log('  --- these are not ours; a human should decide them ---');
-        for (const r of real) {
-          console.log(`    ${r.requestId}`);
-          console.log(`      at:   ${new Date(r.at).toISOString()}`);
-          console.log(`      note: ${r.note === null || r.note === undefined ? '(none)' : JSON.stringify(r.note)}`);
-          console.log(`      why:  ${r.why}`);
-        }
+        console.log(JSON.stringify({
+          relay: RELAY, total: rows.length, trials: trials.length, real: real.length,
+          truncated, unreadable, completeness, rows,
+        }, null, 2));
       } else {
-        console.log('  (no real applicants waiting)');
+        console.log(`admission queue at ${RELAY}`);
+        console.log(`  waiting: ${rows.length}   trial debris: ${trials.length}   REAL APPLICANTS: ${real.length}`);
+        console.log(`  completeness: ${completeness}`);
+        if (real.length) {
+          console.log('');
+          console.log('  --- these are not ours; a human should decide them ---');
+          for (const r of real) {
+            console.log(`    ${r.requestId}`);
+            console.log(`      at:   ${new Date(r.at).toISOString()}`);
+            console.log(`      note: ${r.note === null || r.note === undefined ? '(none)' : JSON.stringify(r.note)}`);
+            console.log(`      why:  ${r.why}`);
+          }
+        } else {
+          console.log('  (no real applicants waiting)');
+        }
+        if (trials.length) {
+          console.log('');
+          console.log('  trial debris, safe to clear:');
+          for (const r of trials) console.log(`    ${r.requestId}  (${r.why})`);
+        }
       }
-      if (trials.length) {
-        console.log('');
-        console.log('  trial debris, safe to clear:');
-        for (const r of trials) console.log(`    ${r.requestId}  (${r.why})`);
+      if (partial) {
+        console.error('');
+        console.error('admission queue review: INCOMPLETE — this was NOT the whole queue.');
+        if (truncated) console.error('  the relay reported more waiting requests than this page carries (truncated: true)');
+        if (unreadable?.length) {
+          console.error(`  entries that exist but could not be read: ${unreadable.join(', ')}`);
+        }
+        console.error('  An entry left unread is an entry the human never decided, which is how a real applicant is binned.');
+        process.exit(2);
       }
     })
     .catch((err) => {
