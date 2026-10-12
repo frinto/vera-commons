@@ -15,9 +15,17 @@
 //          the boolean true ("true" and 1 are both refused -- no truthy coercion);
 //        - a decided admission is already_decided for grant, for refuse, and for a re-grant;
 //        - a bogus decision word is 400; an unknown id is 409.
+//   4. THE STICK GATE IS ENFORCED BY THE SERVER, not by the page. With the key file gone, EVERY
+//      route answers 503 -- including the two agent-facing routes that deliberately skip the token
+//      -- and the lock is tested BEFORE the token, so a locked console does not even reveal that a
+//      token exists. The store is untouched while locked, and plugging the stick back in restores
+//      service in the SAME session: nothing was cached at boot. Check it with --expect-locked.
 //
 // Usage (phase 1, safe anywhere -- only 401 probes):
 //   node tools/console-attack.mjs --url http://127.0.0.1:7806 --token <per-run token>
+//
+// Usage (lock check -- run it AFTER the stick is gone; it only asserts, it never writes):
+//   node tools/console-attack.mjs --url ... --token ... --expect-locked
 //
 // Usage (phase 2, writes to a LAB store only -- requires both flags on purpose):
 //   node tools/console-attack.mjs --url ... --token ... --lab-dir E:/ui-lab --confirm-write
@@ -37,6 +45,10 @@ const url = flag('--url');
 const token = flag('--token');
 const labDir = flag('--lab-dir');
 const confirmWrite = argv.includes('--confirm-write');
+// Locked and unlocked are mutually exclusive states: while the stick is gone every route is 503, so
+// the 401 probes below cannot be observed at all. Each state gets its own mode rather than one run
+// that half-applies.
+const lockedMode = argv.includes('--expect-locked');
 
 if (!url || !token) {
   console.error('usage: node tools/console-attack.mjs --url <console url> --token <per-run token> [--lab-dir <dir> --confirm-write]');
@@ -75,8 +87,8 @@ async function hit(label, method, path, body, headers = {}) {
 console.log(`attacking ${url}\n`);
 
 // --- 1. the token authorises transport, nothing more ---------------------------------------------
-console.log('token gate:');
-{
+console.log(lockedMode ? 'token gate: SKIPPED -- while locked every route is 503, so a 401 probe cannot be observed' : 'token gate:');
+if (!lockedMode) {
   const noToken = await hit('decide', 'POST', '/api/admissions/decide', { id: 'x', decision: 'grant' });
   check('decide without a token is 401', noToken.status === 401, `got ${noToken.status}`);
 
@@ -85,6 +97,41 @@ console.log('token gate:');
 
   const readNoToken = await hit('read', 'GET', '/api/admissions');
   check('reading the queue without a token is 401', readNoToken.status === 401, `got ${readNoToken.status}`);
+}
+
+// --- 1b. the stick gate is the server's, and it covers everything ---------------------------------
+// Point this at a console whose stick has been removed. The page showing "locked" proves nothing;
+// what matters is that no route on the wire will act. This phase asserts only -- it never writes,
+// so it is safe on a real deployment.
+if (argv.includes('--expect-locked')) {
+  console.log('\nstick gate (the key file is gone -- every route must refuse):');
+  const T = `t=${token}`;
+  const routes = [
+    ['GET', `/?${T}`, 'the page, with a token'],
+    ['GET', '/', 'the page, with NO token'],
+    ['GET', `/api/state?${T}`, 'state'],
+    ['GET', `/api/admissions?${T}`, 'the admission queue'],
+    ['POST', `/api/admissions/decide?${T}`, 'decide'],
+    ['POST', `/api/grant?${T}`, 'grant'],
+    ['POST', `/api/revoke?${T}`, 'revoke'],
+    ['POST', '/api/admissions/interview', 'interview -- agent-facing, NO token by design'],
+    ['POST', '/api/admissions/bind', 'bind -- agent-facing, NO token by design'],
+    ['GET', `/api/not-a-real-route?${T}`, 'an unknown api route'],
+    ['GET', '/not-a-real-page', 'an unknown page'],
+  ];
+  let lockedPass = 0;
+  for (const [method, path, what] of routes) {
+    const r = await hit(what, method, path, method === 'POST' ? {} : undefined);
+    check(`${what} is 503 while locked`, r.status === 503, `got ${r.status}`);
+    if (r.status === 503) lockedPass++;
+  }
+  // The lock is checked BEFORE the token, so a locked console refuses even a token-less request with
+  // 503 rather than 401 -- it does not reveal that a token exists at all.
+  const rootNoToken = await hit('page', 'GET', '/');
+  check('the lock precedes the token check (503, not 401)', rootNoToken.status === 503, `got ${rootNoToken.status}`);
+  const rootWithToken = await hit('page', 'GET', `/?${T}`);
+  check('the page is the friendly locked screen, not raw JSON', /<html/i.test(rootWithToken.text), 'got a non-HTML body');
+  console.log(`  (${lockedPass}/${routes.length} routes refused, store never consulted)`);
 }
 
 // --- 2. authority is a SEPARATE check (only meaningful against an observer lab) -------------------
