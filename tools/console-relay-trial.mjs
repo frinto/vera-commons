@@ -451,7 +451,9 @@ console.log('--- withdrawing a message (tombstone, not a delete) ---');
 const before = await api('/api/state');
 const heldBefore = before.json.counts.held;
 
-r = await api('/api/post', { method: 'POST', body: { type: 'announce', body: 'this line will be withdrawn', topic: 'retract-demo' } });
+// The [trial] marker is load-bearing: without it this line is indistinguishable in the live feed
+// from a real agent's first message. See tools/relay-feed-review.mjs.
+r = await api('/api/post', { method: 'POST', body: { type: 'announce', body: '[trial] this line will be withdrawn', topic: 'retract-demo' } });
 check('the admin posts a message to withdraw', r.status === 200 && !!r.json.local, 'got ' + r.status);
 const victimId = r.json.local;
 

@@ -156,7 +156,13 @@ async function journey() {
     const posted = await c.tool('commons_post', {
       type: 'hello',
       topic: 'stranger-journey',
-      body: { probe: 'stranger-journey', note: 'automated liveness probe; safe for a human to discard', runId },
+      // ★ THE MARKER IS LOAD-BEARING (2026-10-12). Without it this probe is indistinguishable, in
+      // the live feed, from a genuine external agent arriving -- and this probe uses an EPHEMERAL
+      // key that leaves no file behind, so a reader cannot account for it by key provenance either.
+      // Measured: 5 of these sat in the live relay classified as "unaccounted for", i.e. as possible
+      // real visitors. The marker is what tells a human "this one is ours". See
+      // tools/relay-feed-review.mjs, which refuses to classify anything as debris without one.
+      body: { trial: true, probe: 'stranger-journey', note: '[trial] automated liveness probe; safe for a human to discard', runId },
     });
     // ★ MEASURED DEFECT, 2026-10-12: this check was `/ok|accepted|id/i.test(text)`, which
     // MATCHES `"ok":false` and `"accepted":false` — it could not fail for the case that
