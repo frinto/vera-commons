@@ -703,6 +703,51 @@ function renderInterview(row) {
    never admitted". The kind/why on each row is decided by the SERVER (src/queue-classify.mjs, the
    same module the review tool imports), and this page never re-derives it: two copies of that
    convention would drift, and the drift is asymmetric. */
+/* The relay actions: the steps of the remote admission walk.
+   Issue the mechanical challenge, collect and score the answers, pull the joiner's identity claim,
+   pull the interview. What they have in common is what they are NOT: none of them admits anybody.
+   `challenge` publishes a test, `collect` publishes a signed score, `bind` fixes WHICH key the
+   record names, `interview` records free text verbatim. Authority is minted only by
+   /api/admissions/decide and by issuing a permit, and those controls keep their own confirmations --
+   so these carry none, and a test asserts this page never reaches an authority route from here. A
+   confirmation the operator does not need is noise, and noise is what makes the one that matters
+   invisible.
+
+   /api/relay/verdict is deliberately NOT wired. It ADOPTS a decision made elsewhere into a decided
+   local record. One click away from the pipeline that produced the verdict, the pipeline's own
+   output would stand in for the admin's judgement -- which is the one thing this console exists to
+   keep separate. Adopting a verdict stays a deliberate, separate act. */
+async function relayAction(kind, row) {
+  const isChallenge = kind === "challenge";
+  const body = isChallenge
+    ? { requestId: row.requestId }
+    : { id: row.localId, requestId: row.requestId };
+  try {
+    const r = await api("/api/relay/" + kind, { method: "POST", body: JSON.stringify(body) });
+    toast(relayActionDone(kind, r));
+  } catch (err) {
+    // The SERVER owns the order of these steps and says so with a code (NO_ANSWERS_YET,
+    // NO_BINDING_YET, NO_INTERVIEW_YET, NOT_QUEUED). Show what it said; do not invent a friendlier
+    // story, because the friendly story is how an operator learns the wrong rule.
+    toast(kind + " — the server refused: " + err.message);
+  }
+  // Both panels can move: a challenge creates a local admission row, and the later steps advance it.
+  await loadRelayQueue();
+  await loadAdmissions();
+}
+
+function relayActionDone(kind, r) {
+  if (kind === "challenge") {
+    return r && r.published
+      ? "Challenge published to the relay. That agent can now sit the test."
+      : "Challenge created, but it was NOT published to the relay.";
+  }
+  if (kind === "collect") return "Answers collected and scored on this machine: " + ((r && r.decision) || "?") + ".";
+  if (kind === "bind") return "Identity claim pulled and verified against the relay.";
+  if (kind === "interview") return "Interview recorded. Read it in the admissions panel below.";
+  return "Done.";
+}
+
 async function loadRelayQueue() {
   const status = $("relay-status");
   status.textContent = "Checking the relay...";
@@ -739,6 +784,26 @@ function renderRelayQueue(rows) {
     box.append(el("div", null, "note: " + (r.note ? r.note : "(none)")));
     box.append(el("div", null, r.why + " · stage: " + (r.stage || "?")
       + (r.verdict ? " · test: " + r.verdict : "")));
+    // The steps this row is eligible for. The server still owns the ORDER -- it refuses an
+    // out-of-turn step with a named code -- so the page offers the actions and reports what
+    // happened rather than modelling the state machine a second time.
+    const actions = el("div", "row");
+    if (!r.localId) {
+      const b = el("button", null, "Issue challenge");
+      b.addEventListener("click", () => relayAction("challenge", r));
+      actions.append(b);
+    } else {
+      for (const [kind, label] of [
+        ["collect", "Collect answers"],
+        ["bind", "Pull identity claim"],
+        ["interview", "Pull interview"],
+      ]) {
+        const b = el("button", null, label);
+        b.addEventListener("click", () => relayAction(kind, r));
+        actions.append(b);
+      }
+    }
+    box.append(actions);
     list.append(box);
   }
 }

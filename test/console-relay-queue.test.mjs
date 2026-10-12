@@ -102,24 +102,38 @@ function makeDom() {
   return nodes;
 }
 function fakeEl(tag, cls, text) {
-  const n = { tag, className: cls ?? null, textContent: text === undefined || text === null ? '' : String(text), children: [], style: {} };
+  const n = { tag, className: cls ?? null, textContent: text === undefined || text === null ? '' : String(text), children: [], style: {}, handlers: {} };
   n.append = (...cs) => { n.children.push(...cs); };
+  n.addEventListener = (ev, fn) => { n.handlers[ev] = fn; };
   return n;
+}
+function buttonsIn(node, out = []) {
+  for (const c of node.children || []) {
+    if (c.tag === 'button') out.push(c);
+    buttonsIn(c, out);
+  }
+  return out;
+}
+
+/** Run the page's own functions, with the page's own $ / el / toast replaced by the stubs. */
+function runPage(apiImpl) {
+  const dom = makeDom();
+  const toasts = [];
+  let admissionsReloads = 0;
+  const factory = new Function('$', 'api', 'el', 'toast', 'loadAdmissions',
+    `${extract('renderRelayQueue')}\n${extract('loadRelayQueue')}\n${extract('relayActionDone')}\n`
+    + `${extract('relayAction')}\nreturn { loadRelayQueue, renderRelayQueue, relayAction, relayActionDone };`);
+  return {
+    ...factory((id) => dom[id], apiImpl, fakeEl, (m) => toasts.push(String(m)), async () => { admissionsReloads++; }),
+    dom,
+    toasts,
+    admissionsReloads: () => admissionsReloads,
+  };
 }
 function textOf(node) {
   let out = node.textContent || '';
   for (const c of node.children || []) out += ' ' + textOf(c);
   return out;
-}
-
-/** Run the page's own functions, with the page's own $ / el replaced by the stubs. */
-function runPage(apiImpl) {
-  const dom = makeDom();
-  const $ = (id) => dom[id];
-  const api = apiImpl;
-  const factory = new Function('$', 'api', 'el',
-    `${extract('renderRelayQueue')}\n${extract('loadRelayQueue')}\nreturn { loadRelayQueue, renderRelayQueue };`);
-  return { ...factory($, api, fakeEl), dom };
 }
 
 test('a real applicant is rendered ABOVE trial debris', () => {
@@ -159,4 +173,72 @@ test('the status line counts the rows that need a human', async () => {
   await loadRelayQueue();
   assert.match(dom['relay-status'].textContent, /2 waiting/);
   assert.match(dom['relay-status'].textContent, /1 need a human/);
+});
+
+// --- 4. the actions advance the remote pipeline, and CANNOT mint authority ------------------------
+// These four steps publish a test, publish a score, fix which key the record names, and record free
+// text. None of them admits anybody, so none of them asks a confirmation -- and the point of that
+// choice is that the confirmations which DO exist (decide, permit, revoke) keep their weight.
+
+test('a row with no local record offers exactly one action: issue the challenge', () => {
+  const { renderRelayQueue, dom } = runPage(async () => ({}));
+  renderRelayQueue([{ requestId: 'req-1', localId: null, short: 'abc', note: 'hi', kind: 'real', why: 'w', stage: 'new' }]);
+  assert.deepEqual(buttonsIn(dom['relay-list']).map((b) => b.textContent), ['Issue challenge']);
+});
+
+test('a row that has a local record offers the three pull actions', () => {
+  const { renderRelayQueue, dom } = runPage(async () => ({}));
+  renderRelayQueue([{ requestId: 'req-2', localId: 'local-2', short: 'd', note: 'x', kind: 'trial', why: 'w', stage: 'answered' }]);
+  assert.deepEqual(buttonsIn(dom['relay-list']).map((b) => b.textContent),
+    ['Collect answers', 'Pull identity claim', 'Pull interview']);
+});
+
+test('issuing a challenge sends ONLY the requestId', async () => {
+  const calls = [];
+  const { relayAction } = runPage(async (path, opts) => { calls.push([path, JSON.parse(opts.body)]); return { published: true }; });
+  await relayAction('challenge', { requestId: 'req-1', localId: null });
+  assert.equal(calls[0][0], '/api/relay/challenge');
+  assert.deepEqual(calls[0][1], { requestId: 'req-1' });
+});
+
+test('the pull steps send BOTH ids, because the server needs the local record and the relay request', async () => {
+  const calls = [];
+  const { relayAction } = runPage(async (path, opts) => { calls.push([path, JSON.parse(opts.body)]); return {}; });
+  await relayAction('collect', { requestId: 'req-2', localId: 'local-2' });
+  assert.equal(calls[0][0], '/api/relay/collect');
+  assert.deepEqual(calls[0][1], { id: 'local-2', requestId: 'req-2' });
+});
+
+test('a refusal is reported the way the server stated it, not rewritten', async () => {
+  const { relayAction, toasts } = runPage(async () => { throw new Error('That agent has not answered yet.'); });
+  await relayAction('collect', { requestId: 'r', localId: 'l' });
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0], /the server refused: That agent has not answered yet\./);
+});
+
+test('the relay panel cannot reach an authority route', () => {
+  const src = extract('relayAction') + extract('relayActionDone') + extract('renderRelayQueue');
+  for (const forbidden of ['/api/admissions/decide', '/api/grant', '/api/revoke', '/api/relay/verdict']) {
+    assert.ok(!src.includes(forbidden), `the relay panel must not reach ${forbidden}`);
+  }
+  assert.match(extract('relayAction'), /api\("\/api\/relay\/" \+ kind/, 'relay paths must be built from the one prefix');
+});
+
+test('the page offers exactly the four pipeline steps and never "verdict"', () => {
+  // Two shapes carry a step name: the direct call (challenge) and the button table (the three pull
+  // steps). Collect BOTH -- an earlier version of this test read only the first shape and so silently
+  // proved nothing about three of the four steps.
+  const direct = [...page.matchAll(/relayAction\("([a-z]+)"/g)].map((m) => m[1]);
+  const table = [...page.matchAll(/\n\s*\["([a-z]+)", "[^"]+"\],/g)].map((m) => m[1]);
+  const steps = [...direct, ...table].sort();
+  assert.deepEqual(steps, ['bind', 'challenge', 'collect', 'interview'],
+    'a step was added or removed; adopting a decision must stay a deliberate act, not a button');
+  // The route may be NAMED in a comment explaining why it is absent -- it must never be a literal.
+  assert.ok(!/["']\/api\/relay\/verdict/.test(page), 'the verdict-adopting route is wired into the page');
+});
+
+test('both panels are refreshed after an action, because either can have changed', async () => {
+  const { relayAction, admissionsReloads } = runPage(async () => ({}));
+  await relayAction('bind', { requestId: 'r', localId: 'l' });
+  assert.equal(admissionsReloads(), 1, 'a challenge creates a local admission row; the list must reload');
 });

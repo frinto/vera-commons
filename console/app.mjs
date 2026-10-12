@@ -385,6 +385,25 @@ async function relayFetch(path, { method = 'GET', body, secret } = {}) {
   return { status: res.status, payload };
 }
 
+// The relay answers 400 for a requestId it does not know AT ALL, and 404 for one it knows but has
+// nothing for YET. Only the second means "not yet". Mapping the first onto a generic relay error
+// sends the operator hunting for an outage when the honest answer is "that entry is gone" -- the same
+// fact the challenge route already names NOT_QUEUED. Kept in ONE place because two copies of a
+// convention drift, and the drift here would be silent. Measured on the live relay by
+// tools/relay-actions-live.mjs: unknown -> 400, known-but-empty -> 404.
+//
+// It returns a BOOLEAN, not the response, and that is load-bearing: `json()` above is a block-bodied
+// arrow with no return, so it yields undefined. A caller written as `const g = relayGone(...);
+// if (g) return g;` therefore falls straight through and writes a SECOND response onto a socket this
+// function already ended -- which does not return an error, it KILLS the console mid-session (live:
+// exit code 1, the operator sees the correct-looking first answer and the process then dies). Call it
+// as `if (relayGone(res, r)) return;`.
+function relayGone(res, r) {
+  if (r.status !== 400) return false;
+  json(res, 404, { error: 'That request is no longer in the relay queue.', code: 'NOT_QUEUED' });
+  return true;
+}
+
 // ed25519 over canonicalize(claim), the SAME bytes tools/live-remote-trial.mjs verifies. The relay
 // cannot forge this, which is what lets a joiner trust a verdict it fetched from a blind relay.
 const PKCS8_ED25519 = Buffer.from('302e020100300506032b657004220420', 'hex');
@@ -1014,6 +1033,7 @@ const server = createServer(async (req, res) => {
 
         const a = await relayFetch(`/admission/answers?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (a.status === 404) return json(res, 409, { error: 'That agent has not answered yet.', code: 'NO_ANSWERS_YET' });
+        if (relayGone(res, a)) return;
         if (a.status !== 200) return json(res, 502, { error: `The relay answered ${a.status}.`, code: 'RELAY_ERROR' });
         const answers = a.payload?.answers;
         if (!Array.isArray(answers)) return json(res, 502, { error: 'The relay returned no answers array.', code: 'RELAY_ERROR' });
@@ -1051,6 +1071,7 @@ const server = createServer(async (req, res) => {
 
         const bnd = await relayFetch(`/admission/bind?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (bnd.status === 404) return json(res, 409, { error: 'That agent has not claimed an identity yet.', code: 'NO_BINDING_YET' });
+        if (relayGone(res, bnd)) return;
         if (bnd.status !== 200) return json(res, 502, { error: `The relay answered ${bnd.status}.`, code: 'RELAY_ERROR' });
 
         // The relay is not trusted here. It moved a key and a signature; the signature is verified
@@ -1074,6 +1095,7 @@ const server = createServer(async (req, res) => {
 
         const itv = await relayFetch(`/admission/interview?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (itv.status === 404) return json(res, 409, { error: 'That agent has not written an interview yet.', code: 'NO_INTERVIEW_YET' });
+        if (relayGone(res, itv)) return;
         if (itv.status !== 200) return json(res, 502, { error: `The relay answered ${itv.status}.`, code: 'RELAY_ERROR' });
 
         // The text is recorded VERBATIM and never parsed, scored, or acted upon. It is shown to the
@@ -1119,6 +1141,7 @@ const server = createServer(async (req, res) => {
 
         const vres = await relayFetch(`/admission/verdict?requestId=${encodeURIComponent(requestId)}`, { secret });
         if (vres.status === 404) return json(res, 409, { error: 'No verdict has been published for that request.', code: 'NO_VERDICT_YET' });
+        if (relayGone(res, vres)) return;
         if (vres.status !== 200) return json(res, 502, { error: `The relay answered ${vres.status} for the verdict.`, code: 'RELAY_ERROR' });
 
         // The bind is fetched separately and is REQUIRED. A verdict says only "for request R, decision
